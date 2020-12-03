@@ -127,3 +127,7 @@ dmypy.json
 
 # Pyre type checker
 .pyre/
+/patches/
+/compiler_template/
+/cases_template/
+/workspace/

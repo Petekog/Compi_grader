@@ -13,6 +13,7 @@ git_repo_global = "https://www.cs.bgu.ac.il/~comp211/compiler"
 main_folder = os.getcwd()
 
 test_format_global = main_folder + "/" + "grader.ml_format"
+test_format_global_scheme = main_folder + "/" + "grader_scheme.ml_format"
 workspace_dir = main_folder + "/" + "workspace/"
 compiler_dir = workspace_dir + "/" + "compiler"
 unpatched_compiler_dir = main_folder + "/" + "compiler_template"
@@ -24,6 +25,35 @@ test_timeout_global = 160
 
 global_cases_point_file = "tests_points.csv"
 global_cases_points_dict = None
+
+def test_one_case_scheme(input_file):
+    print("\tcase{}... (scheme test)".format(input_file.replace(".in", "")), end="")
+    sys.stdout.flush()
+    case_path = os.path.join(tests_dir, input_file)
+    with open(case_path, 'r') as in_file:
+        input_str = in_file.read().strip()
+
+    out_file_path = case_path[:-2] + 'out'
+    with open(out_file_path, 'r') as out_file:
+        expected_output = out_file.read().strip()
+
+    with open(test_format_global_scheme, 'r') as in_file:
+        test_format = in_file.read()
+
+    test_string = test_format.format(input_str)
+
+    with open(case_path.replace(".in", ".test"), 'w') as test_file:
+        test_file.write(test_string)
+    try:
+        proc = subprocess.run(["ocaml", "-stdin"], cwd=compiler_dir, input=test_string, encoding="ascii", stdout=PIPE,
+                              stderr=PIPE,
+                              timeout=test_timeout_global)
+
+        output = proc.stdout
+    except subprocess.CalledProcessError as e:
+        output = e.output.decode("utf-8").strip("\n")
+    except subprocess.TimeoutExpired:
+        output = "Timeout after {} seconds".format(test_timeout_global)
 
 
 def test_one_case(input_file):
