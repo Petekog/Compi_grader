@@ -110,8 +110,6 @@ let rec to_scheme sexp =
                    |_ ->  List.map to_scheme  (list_scheme_to_list_im b) in
                  String.concat " " (List.concat [["("];head;tail;[")"]])
 
-  |Vector (a) -> let lst =  List.map to_scheme a in
-                 String.concat " " (List.concat [["#("];lst;[")"]]);;
 
 let to_scheme_wrapper sexp= match sexp with
   |Pair(a,b)  -> String.concat "" ["'";to_scheme sexp]

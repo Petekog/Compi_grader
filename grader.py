@@ -13,7 +13,11 @@ git_repo_global = "https://www.cs.bgu.ac.il/~comp211/compiler"
 main_folder = os.getcwd()
 
 test_format_global = main_folder + "/" + "grader.ml_format"
+
 test_format_global_scheme = main_folder + "/" + "grader_scheme.ml_format"
+test_global_scheme =  main_folder + "/" + "grader_scheme.sh"
+
+
 workspace_dir = main_folder + "/" + "workspace/"
 compiler_dir = workspace_dir + "/" + "compiler"
 unpatched_compiler_dir = main_folder + "/" + "compiler_template"
@@ -27,7 +31,11 @@ global_cases_point_file = "tests_points.csv"
 global_cases_points_dict = None
 
 def test_one_case_scheme(input_file):
-    print("\tcase{}... (scheme test)".format(input_file.replace(".in", "")), end="")
+    global test_global_scheme,test_format_global_scheme
+
+    case_number = input_file.replace(".in", "")
+
+    print("\tcase{}... (scheme test)".format(case_number) ,end="")
     sys.stdout.flush()
     case_path = os.path.join(tests_dir, input_file)
     with open(case_path, 'r') as in_file:
@@ -55,9 +63,51 @@ def test_one_case_scheme(input_file):
     except subprocess.TimeoutExpired:
         output = "Timeout after {} seconds".format(test_timeout_global)
 
+    with open(tests_dir + "scheme_{}.scm".format(case_number), "w") as scheme_test_file:
+        scheme_test_file.write(output)
+
+    with open(test_global_scheme, 'r') as in_file:
+        test_format = in_file.read()
+
+    test_string = test_format.format(case_num=case_number,output=expected_output)#.split("&&&&")
+
+    test_script = "test_script{}".format(case_number)
+
+
+    result_file = "res_{}".format(case_number)
+
+    with open(tests_dir + test_script, 'w') as test_script_file:
+        test_script_file.write(test_string)
+
+    os.system("chmod 777 {}".format(tests_dir + test_script))
+    output = "#F"
+    try:
+
+        os.chdir(tests_dir)
+        proc = subprocess.run(["./" + test_script],cwd= tests_dir,encoding="ascii", stdout=PIPE,
+                              stderr=PIPE,shell=True,
+                              timeout=test_timeout_global)
+
+        try:
+            with open(result_file,"r") as f:
+                output = f.read()
+        except:
+            output = "#F"
+
+        print(output)
+
+    except subprocess.CalledProcessError as e:
+        output = e.output.decode("utf-8").strip("\n")
+    except subprocess.TimeoutExpired:
+        output = "Timeout after {} seconds".format(test_timeout_global)
+    os.chdir(main_folder)
+
+    return output
+
 
 def test_one_case(input_file):
-    print("\tcase{}...".format(input_file.replace(".in", "")), end="")
+    case_number = input_file.replace(".in", "")
+    print("\tcase{}...".format(case_number), end="")
     sys.stdout.flush()
     case_path = os.path.join(tests_dir, input_file)
     with open(case_path, 'r') as in_file:
@@ -86,8 +136,6 @@ def test_one_case(input_file):
         output = "Timeout after {} seconds".format(test_timeout_global)
     return output
 
-
-
 def test_all_cases():
     grade = 0
 
@@ -102,7 +150,7 @@ def test_all_cases():
         #notes = "Students id's : {} \n".format(ids)
     failed_cases = ""
     for in_file_path in list_of_tests:
-        output = test_one_case(in_file_path)
+        output = test_one_case_scheme(in_file_path)
         tested_case = in_file_path.replace(".in", "")
         if (output != "true"):
             failed_cases += "{} ".format(tested_case)
@@ -130,7 +178,7 @@ def workspace_preprocessing(patch_file_path):
         rmtree(workspace_dir)
 
     if not os.path.exists(unpatched_compiler_dir):
-        ret = os.system("git clone https://www.cs.bgu.ac.il/~comp211/compiler '{}'".format(unpatched_compiler_dir))
+        ret = os.system("git clone https://www.cs.bgu.ac.il/~comp201/compiler '{}'".format(unpatched_compiler_dir))
 
     copytree(unpatched_compiler_dir, compiler_dir)
     ret = os.system("cd '{}'; git apply --reject --ignore-whitespace --whitespace=nowarn '{}'".format(compiler_dir,patch_file_path))
