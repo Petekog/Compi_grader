@@ -1,28 +1,18 @@
-#use "reader.ml";;
+#use "tag-parser.ml";;
 
-let rec sexpr_cmp s1 s2 =
-  match s1, s2 with
-  | Bool(b1), Bool(b2) -> b1 = b2
-  | Nil, Nil -> true
-  | Number(Float f1), Number(Float f2) -> abs_float(f1 -. f2) < 0.001
-  | Number(Fraction(n1, n2)), Number(Fraction(n3, n4)) -> n1 = n3 && n2 = n4
-  | Char(c1), Char(c2) -> c1 = c2
-  | String(s1), String(s2) -> s1 = s2
-  | Symbol(s1), Symbol(s2) -> s1 = s2
-  | Pair(car1, cdr1), Pair(car2, cdr2) -> (sexpr_cmp car1 car2) && (sexpr_cmp cdr1 cdr2)
-  | _ -> false;;
-  
-  
-      
-        
-let input = "{}" ;;
+let rec flatten_thunks e =
+  match e with
+  | If(t, th, el) -> If(flatten_thunks t, flatten_thunks th, flatten_thunks el)
+  | Seq(l) -> Seq(List.map flatten_thunks l)
+  | Or(l) -> Or(List.map flatten_thunks l)
+  | Set(var, exp) -> Set(var, flatten_thunks exp)
+  | LambdaSimple(vars, body) -> LambdaSimple(vars, flatten_thunks body)
+  | LambdaOpt(vars, var, body) -> LambdaOpt(vars, var, flatten_thunks body)
+  | Applic(LambdaSimple([], body), []) ->flatten_thunks body
+  | Applic(e, args) -> Applic(flatten_thunks e, List.map flatten_thunks args)
+  | _ -> e;;
 
-let output = try  {} 
-            with X_this_should_not_happen -> try (Reader.read_sexprs input) ; Printf.printf "%b"  false ;exit 0 
-                                            with  X_this_should_not_happen -> Printf.printf "%b"  true  ;exit 0 ;;
-    
-                                 
-                                 
-let result = (Reader.read_sexprs input) in 
-Printf.printf "%b" (List.for_all2 sexpr_cmp  result output);;
 
+let input = List.map flatten_thunks (Tag_Parser.tag_parse_expressions {});;
+let output = List.map flatten_thunks {};;
+Printf.printf "%b" (List.for_all2 expr_eq  input output);;

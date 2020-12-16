@@ -150,15 +150,25 @@ def test_all_cases():
         #notes = "Students id's : {} \n".format(ids)
     failed_cases = ""
     for in_file_path in list_of_tests:
-        output = test_one_case_scheme(in_file_path)
         tested_case = in_file_path.replace(".in", "")
-        if (output != "true"):
+        if global_cases_points_dict[tested_case][1] == "pset!":
+            output = test_one_case_scheme(in_file_path)
+            true = "#t\n"
+        else:
+            output = test_one_case(in_file_path)
+            true = "true"
+
+        if (output != true):
             failed_cases += "{} ".format(tested_case)
 
             print("Failed ")
         else:
             print("Passed ")
+
             grade += global_cases_points_dict[tested_case][0]
+
+
+
         print("done")
     if failed_cases:
         failed_cases = "Failed cases {}".format(failed_cases)
@@ -178,7 +188,7 @@ def workspace_preprocessing(patch_file_path):
         rmtree(workspace_dir)
 
     if not os.path.exists(unpatched_compiler_dir):
-        ret = os.system("git clone https://www.cs.bgu.ac.il/~comp201/compiler '{}'".format(unpatched_compiler_dir))
+        ret = os.system("git clone {} '{}'".format(git_repo_global,unpatched_compiler_dir))
 
     copytree(unpatched_compiler_dir, compiler_dir)
     ret = os.system("cd '{}'; git apply --reject --ignore-whitespace --whitespace=nowarn '{}'".format(compiler_dir,patch_file_path))
@@ -221,7 +231,7 @@ def read_cases_points():
     cases_num = 0
     for row in list(rows)[:-1]:
         title = row[0]
-        tests = row[1].split("/")
+        tests = row[1].split(",")
         points = int(row[2])
 
         sum1 += points

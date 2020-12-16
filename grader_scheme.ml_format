@@ -7,7 +7,21 @@ exception X_syntax_error;;
 exception Incorrect_arg_error;;
 exception Out_of_bound_index;;
 
-let input = Tag_Parser.tag_parse_expressions {};;
+
+let rec flatten_thunks e =
+  match e with
+  | If(t, th, el) -> If(flatten_thunks t, flatten_thunks th, flatten_thunks el)
+  | Seq(l) -> Seq(List.map flatten_thunks l)
+  | Or(l) -> Or(List.map flatten_thunks l)
+  | Set(var, exp) -> Set(var, flatten_thunks exp)
+  | LambdaSimple(vars, body) -> LambdaSimple(vars, flatten_thunks body)
+  | LambdaOpt(vars, var, body) -> LambdaOpt(vars, var, flatten_thunks body)
+  | Applic(LambdaSimple([], body), []) ->flatten_thunks body
+  | Applic(e, args) -> Applic(flatten_thunks e, List.map flatten_thunks args)
+  | _ -> e;;
+
+
+let input = List.map flatten_thunks  (Tag_Parser.tag_parse_expressions {});;
 
 
 let rec is_proper_list s =
@@ -88,9 +102,11 @@ let list_scheme_to_list_im s =
 
   loop s;;
 
+
+
 let rec to_scheme sexp =
   match sexp with
-  |Number( Int (a)) -> string_of_int a
+  |Number( Fraction (a,b)) ->  (String.concat "" [(string_of_int a);"/"; (string_of_int b)])
   |Number(Float(a)) -> string_of_float a
   |Char(a) -> list_to_string [a]
   |Symbol(a) ->  a
@@ -114,6 +130,7 @@ let rec to_scheme sexp =
 let to_scheme_wrapper sexp= match sexp with
   |Pair(a,b)  -> String.concat "" ["'";to_scheme sexp]
   |Symbol(a) -> String.concat "" ["'";to_scheme sexp]
+  |Nil -> "'()"
   |_ -> to_scheme sexp;;
 
 
@@ -122,7 +139,7 @@ let to_list_scheme str =
 
 let rec to_scheme2 expr =
   match expr with
-  |Const (a) when a = Void -> "Void"
+  |Const (a) when a = Void -> "(void)"
   |Const (Sexpr(a)) -> to_scheme_wrapper a
   |Var(a) -> a
   |If(a,b,c) -> to_list_scheme ["if";to_scheme2 a;to_scheme2 b;to_scheme2 c]
