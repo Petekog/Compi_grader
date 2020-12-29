@@ -1,0 +1,19 @@
+Const
+  (Sexpr
+    (Pair
+      (Pair (Symbol "lambda",
+        Pair (Nil,
+         Pair
+          (Pair (Symbol "lambda",
+            Pair (Pair (Symbol "x", Nil),
+             Pair (Symbol "x",
+              Pair
+               (Pair (Symbol "lambda",
+                 Pair (Nil,
+                  Pair
+                   (Pair (Symbol "set!",
+                     Pair (Symbol "x", Pair (Number (Fraction (1, 1)), Nil))),
+                   Nil))),
+               Nil)))),
+          Nil))),
+      Nil)))

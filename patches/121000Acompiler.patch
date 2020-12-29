@@ -1,0 +1,891 @@
+diff --git a/reader.ml b/reader.ml
+index 32445c2..a944aca 100644
+--- a/reader.ml
++++ b/reader.ml
+@@ -1,5 +1,6 @@
+ 
+ #use "pc.ml";;
++open PC;;
+ 
+ exception X_not_yet_implemented;;
+ exception X_this_should_not_happen;;
+@@ -29,18 +30,300 @@ let rec sexpr_eq s1 s2 =
+   | Pair(car1, cdr1), Pair(car2, cdr2) -> (sexpr_eq car1 car2) && (sexpr_eq cdr1 cdr2)
+   | _ -> false;;
+ 
+-module Reader: sig
+-  val read_sexprs : string -> sexpr list
+-end
+-= struct
+-let normalize_scheme_symbol str =
+-  let s = string_to_list str in
+-  if (andmap
+-	(fun ch -> (ch = (lowercase_ascii ch)))
+-	s) then str
+-  else Printf.sprintf "|%s|" str;;
++  module Reader: sig
++    val read_sexprs : string -> sexpr list
++  end 
++  = struct
++  let normalize_scheme_symbol str =
++    let s = string_to_list str in
++    if (andmap
++    (fun ch -> (ch = (lowercase_ascii ch)))
++    s) then str
++    else Printf.sprintf "|%s|" str;;
++  
++  
++  
++  
++  (*************************************** number parsers*********************************)
++    let nt_sign = disj (char '+') (char '-');;
++  
++    let nt_digits = range '0' '9';;
++  
++    let nt_digits_num = pack (range '0' '9') (fun (a)->  int_of_char a - int_of_char '0');;
++  
++    let nt_natural = 
++      let at_least_one_num = plus nt_digits_num in 
++      pack at_least_one_num (fun d -> (List.fold_left 
++                                                    (fun a b -> 10 * a + b)  0 d));;
++    
++    let nt_numerator = 
++      let signed_num = caten (maybe nt_sign) nt_natural in 
++      pack signed_num (fun (s,n)-> match s with 
++                                  | None -> n
++                                  | (Some '+') -> n
++                                  | (Some '-') -> n * (-1)
++                                  |  _ -> raise X_no_match ) ;;
++    
++    let nt_slash = char '/' ;;
++
++    let rec gcd n d = match d with
++                      | 0 -> n
++                      | _ -> gcd d (n mod d);;
++    
++    (*TO CHECK: 0/12 -> [0,1]? or [0,12]?*)
++
++    let nt_fraction = 
++        let frac = caten (caten nt_numerator nt_slash ) nt_natural in
++        pack frac (fun ((n1,s), n2)-> (Fraction ( ( n1/(gcd  (abs n1)  n2) ), ( n2/(gcd  (abs n1)  n2) ) )));;
++
++    (*TO CHECK: 0/12 -> [0,1]? or [0,12]?*)
++
++    
++    let nt_mantissa =  
++      let at_least_one_num = plus nt_digits_num in          
++      pack at_least_one_num (fun d -> (List.fold_right 
++                                                  ( fun a b -> ( (  (float_of_int a)  +.   b ) /. 10.0 ) ) d  0.0  ) );; 
++      
++    
++    let nt_dot = char '.' ;;
++  
++    let nt_float = 
++      let num = caten (caten (caten (maybe nt_sign) nt_natural) nt_dot) nt_mantissa in 
++      pack num (fun (((s ,n),d),r)-> match s with 
++                                    |None -> Float ((float_of_int n) +. r)
++                                    | (Some '+') -> Float ((float_of_int n) +. r)
++                                    | (Some '-') -> Float (-1.0 *. ((float_of_int n) +. r))
++                                    |  _ -> raise X_no_match  );;
++       
++    
++  
++    let nt_int = 
++      let signed_num = caten (maybe nt_sign) nt_natural in 
++      let complete_num = not_followed_by signed_num (disj nt_dot  nt_slash) in 
++      pack complete_num (fun (s,n) -> match s with
++                                    |None -> Fraction (n,1)
++                                    |(Some '+') -> Fraction (n,1)
++                                    |(Some '-') -> Fraction (n * (-1),1)
++                                    | _ -> raise X_no_match ) ;;
++    
++    let nt_e = char_ci 'e' ;; 
++
++    let nt_scientific = 
++      let valid_num = disj nt_int  nt_float  in 
++      let scientific = caten (caten valid_num nt_e ) nt_numerator in 
++      pack scientific (fun ((num1 , e) , num2) ->  match num1 with 
++                                                  |Fraction (n,1) -> Float ((float_of_string(list_to_string( List.append ( List.append (string_to_list(string_of_int n))  [e] ) (string_to_list(string_of_int num2))))))
++                                                  |Float n -> Float ((float_of_string(list_to_string( List.append ( List.append (string_to_list(string_of_float n))  [e] ) (string_to_list(string_of_int num2))))))
++                                                  |_ -> raise X_no_match 
++                      );;
++                                                
++
++
++  (*************************************** number parsers end *********************************)
++  
++  (*************************************** symbol parsers*********************************)
++ 
++  let nt_lowercase = range 'a' 'z';;
++  
++  let nt_uppercase = pack (range 'A' 'Z') (fun c -> lowercase_ascii c);;
++  
++  let nt_punctuation = one_of "!$^*-_=+<>?:/";;
++  
++  let nt_symbol_char_not_dot = disj_list [nt_digits ; nt_lowercase ; nt_uppercase ; nt_punctuation; ];;
++  
++  let nt_symbol_char = disj_list [nt_digits ; nt_lowercase ; nt_uppercase ; nt_punctuation; nt_dot; ];;
++  
++  
++  let nt_number = 
++    let number = disj_list [nt_scientific;nt_int ; nt_float ;nt_fraction] in 
++    let number_not_sym = not_followed_by number nt_symbol_char in
++    pack number_not_sym (fun(e)-> Number e) ;;
++
++  let nt_symbol = 
++    let symbol_list = disj (caten nt_symbol_char_not_dot (star nt_symbol_char)) (caten nt_dot ( plus nt_symbol_char ) ) in 
++    pack (diff symbol_list nt_number) (fun (e,s) -> Symbol  (list_to_string (e::s))) ;;
++  
++  (*************************************** symbol parsers end *********************************)
++  
++  
++  (*************************************** boolean  parsers*********************************)
++  let lowercase_ascii_word lst = list_to_string(List.map lowercase_ascii lst);;
++  
++  let nt_bool = 
++    let false_or_true = disj (word_ci "#t") (word_ci "#f") in 
++    pack false_or_true 
++          (fun (lst)-> match ( lowercase_ascii_word  lst) with
++                      | "#t"-> Bool true
++                      | "#f" -> Bool false
++                      | _ -> raise X_no_match);;
++  
++  (*************************************** boolean parsers end *********************************)
++                    
++  
++  (********* string = literal_char || meta_char  parser ********)
++  
++  let nt_literal_char = const (fun(ch1)-> ch1 != '\\' && ch1 != '\"');;
++  
++  let nt_meta_char = 
++     disj_list[ (pack (word_ci "\\\\") (fun (e)-> '\\')) ; 
++                (pack (word_ci "\\\"") (fun (e)-> '\"'));
++                (pack (word_ci "\\t" ) (fun (e)-> '\t'));
++                (pack (word_ci "\\f" ) (fun (e)-> '\012'));
++                (pack (word_ci "\\n" ) (fun (e)-> '\n'));
++                (pack (word_ci "\\r" ) (fun (e)-> '\r'));
++              ];;
++  
++  let nt_double_quote = char '\"';;
++  
++  let nt_string_char = disj nt_literal_char nt_meta_char ;; 
++  
++  let nt_string = 
++    let string_char_list = (caten (caten nt_double_quote  (star nt_string_char)) nt_double_quote) in 
++      pack string_char_list (fun ((q1,s), q2)-> (String (list_to_string s)));;
++   
++  (********** string parser end ***************************) 
++  
++  
++  (********* char = CharPrefix(NamedChar || VisibleSimpleChar) parser ********)
++  
++  let nt_prefix_char = word "#\\";;
++  
++  let nt_named_char = 
++    disj_list[(pack (word_ci "newline") (fun (e)-> '\n')) ; 
++              (pack (word_ci "nul") (fun (e)-> '\000'));
++              (pack (word_ci "page") (fun (e)-> '\012'));
++              (pack (word_ci "return" ) (fun (e)-> '\r'));
++              (pack (word_ci "space" ) (fun (e)-> '\032'));
++              (pack (word_ci "tab" ) (fun (e)-> '\t'));
++            ];;
++          
++  let nt_visible_simple_char = const (fun (ch) -> ch > ' ' ) ;;
++  
++  let nt_dis_chars = disj nt_named_char nt_visible_simple_char ;;
++  
++  let nt_char = 
++    let char_types = (caten nt_prefix_char nt_dis_chars ) in 
++    pack char_types (fun (p,c)-> Char c ) ;;
++  
++  
++  (********* char parser end ********************************)
++  
++  
++  
++  (********* line comments parser ********)
++  
++  let nt_semicolon = char ';' ;;
++  
++  let nt_comments = const (fun s -> (s != '\n'));;
++  
++  let nt_end_of_line = pack (char_ci '\n') (fun x -> []) ;;
++  
++  let nt_end_of_comment = disj nt_end_of_line nt_end_of_input;;
++  
++  (*TO CHECK : SEMICOLON NOT IN THE BEGINNING OF THE LINE *)
++  let nt_line_comments = 
++    let comment_list = caten(caten nt_semicolon (plus nt_comments) ) nt_end_of_comment in 
++    pack comment_list (fun _-> []) ;;
++  (*TO CHECK : SEMICOLON NOT IN THE BEGINNING OF THE LINE *)
++  
++  (********* line comments parser end********)
++  
++  
++  
++  
++  (******* whitespaces parser *********)
++
++  let nt_whitespaces = 
++    let whitespaces = plus nt_whitespace in
++    pack whitespaces (fun _ -> []) ;;
++
++  (***** whitespaces parser end  *******)
++
++
++(*persers delimiters *)
++
++  let lparen = char '(' ;;
++  let rparen = char ')' ;;
++  let quoted = char '\'';;
++  let qquoted = char '`' ;;
++  let unquoted = char ',' ;;
++  let unqoutedSpliced = word ",@" ;; 
++
++(*persers delimiters *)
++  (********* sexpr parser ********)
++
++  let rec nt_sexpr s = 
++    let sexprs = disj_list [nt_bool; nt_char; nt_number; nt_string; nt_symbol; nt_list; nt_nil;nt_dotted_list; nt_quoted ;nt_qquoted;
++                            nt_unquoted;nt_unquotedSpliced;] in
++    let sexprs_cleaned = caten (caten cleaner sexprs) cleaner in
++    pack sexprs_cleaned (fun ((_,e),_)-> e) s
++
++  (**** sexp_comments parser *****)
++
++  (**** CHECK IF ITS LEGAL #; ;JXX\n 1 *****)
++  and nt_sexpr_comment s =
++    let comment = caten (caten (word "#;") cleaner ) nt_sexpr in
++    pack comment ( fun _ -> []) s
++      
++  (**** sexp_comments parser end *****)
++
++
++  (******************************cleaner = remove white_spaces , remove sexp_comments , remove line_comments  *********************************)
++  and cleaner s =
++    let nt_comment_or_whitespaces = disj_list [nt_whitespaces; nt_line_comments; nt_sexpr_comment; ] in
++    let nt_all_comorspace = star nt_comment_or_whitespaces in
++    pack nt_all_comorspace (fun _ -> []) s
++
++  (******************************cleaner end *********************************)
++ 
++  and nt_list s =
++    let list_ = caten (caten (lparen) (plus nt_sexpr)) (rparen) in
++    pack list_ (fun ((lp,lst),rp) -> List.fold_right (fun hd tl -> Pair (hd, tl)) lst Nil) s
++
++  (********* nil parser ********)             
++  
++  and nt_nil s = 
++    let empty_list = caten (caten (lparen) cleaner) (rparen) in
++    pack empty_list (fun _-> Nil ) s 
++  
++  (********* nil parser end********)
++
++  and nt_dotted_list s = 
++    let dotted_list =  caten (caten (caten (caten (lparen) (plus nt_sexpr)) nt_dot) nt_sexpr) (rparen) in 
++    pack dotted_list (fun ((((_ , lst),_) , sexp), _) -> List.fold_right (fun hd tl -> Pair (hd,tl)) lst sexp ) s 
++
++  (********* pair parser end********)
++ 
++ (************quoted parsers **************)
++  and nt_quoted s = 
++    let q = caten quoted nt_sexpr in 
++    pack q (fun (_ ,s )-> Pair(Symbol "quote" , Pair(s , Nil))) s
++  
++  and nt_qquoted s = 
++    let qq = caten qquoted nt_sexpr in
++    pack qq (fun (_,s)-> Pair(Symbol "quasiquote" , Pair(s , Nil))) s
++
++  and nt_unquoted s =
++    let unq = caten unquoted nt_sexpr in 
++    pack unq (fun (_,s)-> Pair(Symbol "unquote" , Pair(s , Nil))) s
++
++  and nt_unquotedSpliced s =
++    let unqs = caten unqoutedSpliced nt_sexpr in 
++    pack unqs (fun (_,s)-> Pair(Symbol "unquote-splicing" , Pair(s , Nil))) s
++ 
++ (************quoted parsers end**************)
++ 
++ 
++  ;;
++  
++  
++  
++
+ 
++let read_sexprs string = 
++  let tokens = string_to_list string in 
++  let (ast,_)= (star nt_sexpr) tokens in
++  ast;;
+ 
+-let read_sexprs string = raise X_not_yet_implemented;;
+   
+ end;; (* struct Reader *)
+diff --git a/readme.txt b/readme.txt
+index e69de29..23a2292 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1,10 @@
++Daniel Sadoun 313189110
++Chen Hadad    315313353
++
++I (We) assert that the work we submitted is 100% our own. We have not received any
++part from any other student in the class, nor have we give parts of it for use to others.
++Nor have we used code from other sources: Courses taught previously at this university,
++courses taught at other universities, various bits of code found on the Internet, etc.
++We realize that should our code be found to contain code from other sources, that a
++formal case shall be opened against us with va’adat mishma’at, in pursuit of disciplinary
++action.
+\ No newline at end of file
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..129c523 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -69,11 +69,332 @@ end;;
+ 
+ module Semantics : SEMANTICS = struct
+ 
+-let annotate_lexical_addresses e = raise X_not_yet_implemented;;
++(********************************************Lexical addressing***********************************************)
++let rec find_index lst element index = match lst with
++| []-> raise X_syntax_error
++|head::tail -> (match head = element with
++                |true-> index
++                |false -> (find_index tail element (index+1))) ;;
+ 
+-let annotate_tail_calls e = raise X_not_yet_implemented;;
++let var_type v (params , bounded) =
++match (List.mem v params) with 
++|true ->  VarParam ( v ,(find_index params v 0))
++|false -> (match (List.find_opt (List.mem v) bounded) with
++|Some(lst)-> VarBound ( v , (find_index bounded lst 0) , (find_index lst v 0))
++|None -> VarFree v ) ;;
+ 
+-let box_set e = raise X_not_yet_implemented;;
++let extend_env (params , bounded) curr_params = (curr_params , params::bounded);;
++
++let rec lexical_addressing curr_env expr  =  match expr with
++|Const (exp) -> Const'(exp) 
++|If(test,dit,dif)-> If'( (lexical_addressing curr_env test ) , (lexical_addressing curr_env dit ) , (lexical_addressing curr_env dif ) )
++|Def(Var(v) ,body)-> Def'( (VarFree (v)) , (lexical_addressing curr_env body ))
++|Seq(exprs) -> Seq' (List.map (lexical_addressing curr_env) exprs)
++|Set(Var(v), value) -> Set' ((var_type v curr_env) ,(lexical_addressing curr_env value) )
++|Or(lst) -> Or' (List.map (lexical_addressing curr_env ) lst)
++|Var v -> Var' (var_type v curr_env)
++|Applic(car , cdr) -> Applic' ( (lexical_addressing curr_env car) , (List.map (lexical_addressing curr_env) cdr))
++|LambdaSimple (params , body)-> LambdaSimple' (params , (lexical_addressing (extend_env curr_env params) body) )
++|LambdaOpt (params , opt_param , body)-> LambdaOpt' ( params , opt_param ,(lexical_addressing ( extend_env curr_env (List.append params [opt_param]) ) body))
++|_-> raise X_syntax_error;;
++
++(********************************************Lexical addressing***********************************************)
++
++(********************************************Annotating tail calls***********************************************)
++
++let rec tail_calls exp' isTP = match exp' with 
++                              | Const'(x) -> exp'
++                              | Var'(x) -> exp'
++                              | If'(test, dit, dif) -> If'( (tail_calls test false) ,(tail_calls dit isTP) , (tail_calls dif isTP) )
++                              | Def'(v,body) -> Def'( v , (tail_calls body false ))
++                              | Set'(v,value) -> Set'( v ,(tail_calls value false )) 
++                              | Seq'(exprs') -> Seq'((tp_last exprs' isTP))
++                              | Or'(lst) -> Or'((tp_last lst isTP))
++                              | LambdaSimple'(params , body) -> LambdaSimple'( params , (tail_calls body true))
++                              | LambdaOpt'(params, opt_param, body) -> LambdaOpt'( params, opt_param, (tail_calls body true))
++                              | Applic'(car , cdr) -> (tp_applic car cdr isTP)
++                              |_ -> raise X_syntax_error
++
++
++and tp_last lst isTP = match lst with 
++                      |head::tail -> (match tail with 
++                                      |[]-> [(tail_calls head isTP)]
++                                      |_ -> (tail_calls head false)::(tp_last tail isTP))
++                      |_ -> raise X_syntax_error
++
++and tp_applic rator rands isTP = match isTP with
++                                 | true -> ApplicTP'((tail_calls rator false), (List.map (fun exp' -> (tail_calls exp' false)) rands))
++                                 | false -> Applic'((tail_calls rator false), (List.map (fun exp' -> (tail_calls exp' false)) rands))
++
++;;
++(********************************************Annotating tail calls***********************************************)
++
++(********************************************Boxing of variables***********************************************)
++
++let rec boxing exp' =
++                     match exp' with
++                    |Const'(x) -> exp'
++                    |Var'(x) -> exp'
++                    |If'(test, dit, dif) -> If'( (boxing test) , (boxing dit), (boxing dif))
++                    |Def' (v , value) -> Def'( v, (boxing value))
++                    |Set'(v , value) -> Set'( v, (boxing value))
++                    |Seq'(exprs') -> Seq'((List.map boxing exprs'))
++                    |Or'(lst) -> Or'((List.map boxing lst))
++                    |Applic'(car , cdr) -> Applic'((boxing car) ,(List.map boxing cdr) )
++                    |ApplicTP'(car , cdr) -> ApplicTP'((boxing car) ,(List.map boxing cdr) )
++                    |LambdaSimple'(params , body) -> LambdaSimple'(params , (boxing_body params body ))
++                    |LambdaOpt' (params , opt_param , body) -> LambdaOpt'(params ,opt_param, (boxing_body (List.append params [opt_param]) body ))
++                    |Box'(x) -> exp'
++                    |BoxGet'(x) -> exp'
++                    |BoxSet'(v, value) -> BoxSet'(v , (boxing value))
++                    
++
++
++
++and boxing_body params body =  boxing ( update_parameters (List.map (is_boxing_needed body) params) body )
++
++
++and update_parameters tuple_params body  = match (is_false_list tuple_params) with 
++                                          |true-> body 
++                                          |false -> (match body with 
++                                                      |Seq'(x)-> Seq'(List.append (makeSets tuple_params 0) (List.map (update_body tuple_params) x) )
++                                                      |_-> Seq'(List.append (makeSets tuple_params 0) [(update_body tuple_params body)] ))
++
++and is_false_list tuple_params = match tuple_params with
++                                |[]-> true
++                                |(x,false)::tail -> is_false_list tail
++                                |(x,true)::tail -> false
++                                        
++and makeSets tuple_params index = match tuple_params with
++                                  |[] -> []
++                                  |(param , false)::tail -> (makeSets tail (index+1))
++                                  |(param , true)::tail -> Set'(VarParam(param , index) , Box'(VarParam(param ,index))):: ( makeSets tail (index+1) )
++
++and update_body tuple_params body = match tuple_params with 
++                                  |[] -> body
++                                  |(param , false)::tail -> update_body tail body
++                                  |(param , true)::tail -> update_body tail (update_param  param body)
++          
++and update_param param exp'  = match exp' with
++                              |Const'(x) -> exp'
++                              |Var'(v) -> (match v with
++                                          |VarFree(x)-> exp'
++                                          |VarParam(x,_) -> (match (x = param) with
++                                                            |true -> BoxGet'(v)
++                                                            |false -> exp') 
++                                          |VarBound(x,_,_) -> (match (x = param) with
++                                                            |true -> BoxGet'(v)
++                                                            |false -> exp'))
++                              |If'(test, dit, dif) -> If'( (update_param param test) , (update_param param dit), (update_param param dif) )
++                              |Set'(v , value) -> (match v with
++                                                  |VarFree(x)-> Set'(v, (update_param param value ))
++                                                  |VarParam(x,_) -> (match (x = param) with
++                                                                    |true -> BoxSet'(v,(update_param  param value))
++                                                                    |false -> Set'(v, (update_param param value))) 
++                                                  |VarBound(x,_,_) -> (match (x = param) with
++                                                                    |true -> BoxSet'(v,(update_param  param value))
++                                                                    |false -> Set'(v, (update_param  param value))) )
++                              |Seq'(exprs') -> Seq'((List.map (update_param  param ) exprs'))
++                              |Or'(lst) -> Or'(List.map (update_param  param ) lst)
++                              |Applic'(car , cdr) -> Applic'((update_param param car) ,(List.map (update_param param) cdr) )
++                              |ApplicTP'(car , cdr) -> ApplicTP'((update_param param car) ,(List.map (update_param param) cdr) )
++                              |LambdaSimple'(params , body) -> (match (List.mem param params) with 
++                                                              |true -> exp'
++                                                              |false -> LambdaSimple'(params, (update_param param body)))
++                              |LambdaOpt' (params , opt_param , body) -> (match (List.mem param (opt_param::params)) with 
++                                                                        |true -> exp'
++                                                                        |false -> LambdaOpt'(params,opt_param,(update_param param body)))
++                              |Box'(x) -> exp'
++                              |BoxGet'(x) -> exp'
++                              |BoxSet'(v, value) -> BoxSet'(v , (update_param param value))
++                              |_ -> raise X_syntax_error
++
++and is_boxing_needed body param  = match (check_seq_ordered param body ) with 
++                                  |true -> (param, false)
++                                  |false -> (param, (check_levels (get_tuple_RW param (false,false) body)))
++
++
++
++
++(****************************************check if boxing needed*****************************)  
++
++and check_seq_ordered param body  = match body with 
++                                  |Seq'(exps') ->  (check_rw_order ( List.map (get_tuple_RW_seq param (false , false)) exps' )) || ( or_list (List.map  (check_seq_ordered param ) exps') )
++                                  |Const'(x) -> false
++                                  |Var'(v) -> false
++                                  |If'(test, dit, dif) ->( (check_seq_ordered param test) ||  (check_seq_ordered param dit) || (check_seq_ordered param dif) )
++                                  |Set'(v , value) -> check_seq_ordered param value 
++                                  |Or'(lst) -> or_list (List.map (check_seq_ordered param) lst)
++                                  |Applic'(car , cdr) -> (check_seq_ordered param car) ||  or_list (List.map (check_seq_ordered param) cdr)
++                                  |ApplicTP'(car , cdr) -> (check_seq_ordered param car) || or_list (List.map (check_seq_ordered param) cdr)
++                                  |LambdaSimple'(params , body) -> false
++                                  |LambdaOpt' (params , opt_param , body) -> false
++                                  |Box'(x) -> false
++                                  |BoxGet'(x) -> false
++                                  |BoxSet'(v, value) -> check_seq_ordered param value
++                                  |_ -> raise X_syntax_error
++
++and or_list bool_list = List.fold_left (fun acc curr_bool -> acc || curr_bool) false bool_list
++
++
++and get_tuples_level1 double_tuple_lst = match double_tuple_lst with
++                                        |[] -> []
++                                        |((_,_),lst)::tail -> List.append lst (get_tuples_level1 tail)
++
++
++
++and check_rw_order double_tuple_lst = match double_tuple_lst with 
++                                      |[] -> false
++                                      |((true,false),lst)::tail -> ( (check_write_level1 ( get_tuples_level1 tail )) || (check_rw_order tail) )
++                                      |((false,true),lst)::tail -> ((check_read_level1 ( get_tuples_level1 tail )) || (check_rw_order tail))
++                                      |((true,true),lst)::tail -> ((check_read_or_write_level1 ( get_tuples_level1 tail )) || (check_rw_order tail) )
++                                      |((false,false),lst)::tail -> check_rw_order tail
++
++
++and check_levels double_tuple = match double_tuple with
++                                    |((true,false),tuple_lst)   -> ( (check_write_level1 tuple_lst) || (check_2_lambdas_level1 tuple_lst) )
++                                    |((true,true),tuple_lst)-> ( (check_read_or_write_level1 tuple_lst) || (check_2_lambdas_level1 tuple_lst) )
++                                    |((false,true),tuple_lst) -> ( (check_read_level1 tuple_lst) || (check_2_lambdas_level1 tuple_lst) )
++                                    |((false,false),tuple_lst) ->  (check_2_lambdas_level1 tuple_lst)
++
++and check_write_level1  tuple_lst = List.fold_left (fun bool_acc tuple_curr -> (((tuple_curr = (false , true)) || (tuple_curr = (true , true) )) || bool_acc ) ) false tuple_lst
++
++and check_read_level1 tuple_lst = List.fold_left (fun bool_acc tuple_curr -> (((tuple_curr = (true , false)) || (tuple_curr = (true , true) )) || bool_acc ) ) false tuple_lst
++
++and check_read_or_write_level1 tuple_lst = List.fold_left (fun bool_acc tuple_curr -> (((tuple_curr = (true , false)) || (tuple_curr = (true , true) ) || (tuple_curr = (false , true) )) || bool_acc ) ) false tuple_lst
++
++and counter_read tuple_lst = List.fold_left ( fun count tuple_curr -> match tuple_curr with
++                                                                    |(true, false)-> count+1
++                                                                    |(_,_) -> count)
++                                                                                                  0 tuple_lst
++
++and counter_write tuple_lst = List.fold_left ( fun count tuple_curr -> match tuple_curr with
++                                                                      |(false, true)-> count+1
++                                                                      |(_,_) -> count)
++                                                                                                0 tuple_lst
++
++and counter_read_write tuple_lst = List.fold_left ( fun count tuple_curr -> match tuple_curr with
++                                                                            |(true, true)-> count+1
++                                                                            |(_,_) -> count)
++                                                                                                0 tuple_lst
++
++and check_2_lambdas_level1 tuple_lst = match ((counter_write tuple_lst)>=1 ,(counter_read tuple_lst)>=1 , (counter_read_write tuple_lst )>=1 , (counter_read_write tuple_lst )>=2 )  with
++                                      |(true , true , _ , _) -> true
++                                      |(true , false ,true ,_) -> true
++                                      |(false , true ,true ,_) -> true
++                                      |(_,_,_,true) -> true
++                                      |(_,_,_,_) -> false
++                                  
++
++(****************************************check if boxing needed*****************************) 
++
++
++(********************struct of tuple - for boxing*************************)
++
++(*tuple is tuple inside tuple which represent read write exprs. the structure (rd0, wr0) represent the level 0 of kinon and (rd1, wr1) represent the level 1 of kinon*)
++
++
++   
++and get_tuple_RW_seq param (rd0, wr0) exp' = match exp' with
++                                        |Const'(x) -> ((rd0, wr0),[])
++                                        |Var'(VarFree(x)) -> ((rd0, wr0),[])
++                                        |Var'(VarBound(x,_,_)) -> (((rd0 || x = param ), wr0),[])
++                                        |Var'(VarParam(x,_)) -> (((rd0 || x = param ), wr0),[])
++                                        |If'(test, dit, dif) -> ((rd0,wr0) , [(get_tuple_level1 param (false,false) exp') ])
++                                        |Set'(v , value) -> (match v with
++                                                            |VarFree(x) -> ((rd0,wr0) , [(get_tuple_level1 param (false,false) value)] )
++                                                            |VarParam(x,_) -> ((rd0,wr0 || x=param) , [(get_tuple_level1 param (false,false) value)] )
++                                                            |VarBound(x,_,_) -> ((rd0,wr0 || x=param) , [(get_tuple_level1 param (false,false) value)] ))                
++                                        |Or'(lst) -> ((rd0,wr0) , [(get_tuple_level1 param (false,false) exp')] )
++                                        |Seq'(lst) -> ((rd0,wr0) , [(get_tuple_level1 param (false,false) exp')] )
++                                        |Applic'(car , cdr) ->((rd0,wr0) , [(get_tuple_level1 param (false,false) exp')] )
++                                        |ApplicTP'(car , cdr) -> ((rd0,wr0) , [(get_tuple_level1 param (false,false) exp') ])
++                                        |LambdaSimple'(params , body) -> (match (List.mem param params) with 
++                                                                          |true-> ((rd0, wr0),[])
++                                                                          |false -> ((rd0,wr0),[( get_tuple_level1 param (false,false) body )]) )
++                                        |LambdaOpt' (params , opt_param , body) -> (match (List.mem param (opt_param::params) )  with 
++                                                                                  |true-> ((rd0, wr0),[])
++                                                                                  |false -> ((rd0,wr0),[( get_tuple_level1 param (false,false) body )]) )
++                                        |Box'(x) -> ((rd0, wr0),[])
++                                        |BoxGet'(x) -> ((rd0, wr0),[])
++                                        |BoxSet'(v, value) -> ((rd0,wr0) , [(get_tuple_level1 param (false,false) value)] )
++                                        |_ -> raise X_syntax_error
++
++and get_tuple_RW param (rd0, wr0) exp' = match exp' with
++                                        |Const'(x) -> ((rd0, wr0),[])
++                                        |Var'(VarFree(x)) -> ((rd0, wr0),[])
++                                        |Var'(VarBound(x,_,_)) -> (((rd0 || x = param ), wr0),[])
++                                        |Var'(VarParam(x,_)) -> (((rd0 || x = param ), wr0),[])
++                                        |If'(test, dit, dif) -> (double_tuples_or [(get_tuple_RW param (rd0, wr0) test) ; (get_tuple_RW param (rd0, wr0) dit) ; (get_tuple_RW param (rd0, wr0) dif)])
++                                        |Set'(v , value) -> (match v with
++                                                            |VarFree(x) -> (get_tuple_RW param (rd0, wr0) value)
++                                                            |VarParam(x,_) -> (get_tuple_RW param (rd0, (wr0|| x= param)) value)
++                                                            |VarBound(x,_,_) -> (get_tuple_RW param (rd0, (wr0|| x= param)) value))                  
++                                        |Or'(lst) -> double_tuples_or (List.map (get_tuple_RW param (rd0, wr0)) lst)
++                                        |Seq'(lst) -> double_tuples_or (List.map (get_tuple_RW param (rd0, wr0)) lst)
++                                        |Applic'(car , cdr) -> double_tuples_or ( (get_tuple_RW param (rd0, wr0) car) :: (List.map (get_tuple_RW param (rd0, wr0)) cdr))
++                                        |ApplicTP'(car , cdr) -> double_tuples_or ( (get_tuple_RW param (rd0, wr0) car) :: (List.map (get_tuple_RW param (rd0, wr0)) cdr))
++                                        |LambdaSimple'(params , body) -> (match (List.mem param params) with 
++                                                                          |true-> ((rd0, wr0),[])
++                                                                          |false -> ((rd0,wr0),[( get_tuple_level1 param (false,false) body )]) )
++                                        |LambdaOpt' (params , opt_param , body) -> (match (List.mem param (opt_param::params) )  with 
++                                                                                  |true-> ((rd0, wr0),[])
++                                                                                  |false -> ((rd0,wr0),[( get_tuple_level1 param (false,false) body )]) )
++                                        |Box'(x) -> ((rd0, wr0),[])
++                                        |BoxGet'(x) -> ((rd0, wr0),[])
++                                        |BoxSet'(v, value) -> get_tuple_RW param (rd0, wr0) value
++                                        |_ -> raise X_syntax_error
++
++
++                                      
++(*return tuple after a merge between the tuple_list*)
++and double_tuples_or tuple_list = 
++List.fold_left (fun ((acc_r0,acc_w0),acc_lst) ((rd0,wr0), lst) -> (((acc_r0||rd0),(acc_w0||wr0)),(List.append acc_lst lst) )) ((false,false),[]) tuple_list
++
++and tuples_or tuple_list = 
++List.fold_left (fun (acc_r1,acc_w1) (rd1,wr1) ->  ((acc_r1||rd1) ,(acc_w1||wr1)) ) (false,false) tuple_list
++
++(*return tuple (rd1,wr1)*)
++and get_tuple_level1 param (rd1,wr1) body = match body with
++                                      |Const'(x) -> (rd1, wr1)
++                                      |Var'(VarFree(x)) -> (rd1, wr1)
++                                      |Var'(VarBound(x,_,_)) -> ((rd1 || x = param ), wr1)
++                                      |Var'(VarParam(x,_)) -> ((rd1 || x = param ), wr1)
++                                      |If'(test, dit, dif) -> (tuples_or [(get_tuple_level1 param (rd1, wr1) test) ; (get_tuple_level1 param (rd1, wr1) dit) ; (get_tuple_level1 param (rd1, wr1) dif)])
++                                      |Def' (v , value) -> (rd1, wr1)
++                                      |Seq' (exps')-> tuples_or (List.map (get_tuple_level1 param (rd1, wr1)) exps')
++                                      |Set'(v , value) -> (match v with
++                                                          |VarFree(x) -> (get_tuple_level1 param (rd1, wr1) value)
++                                                          |VarParam(x,_) -> (get_tuple_level1 param (rd1, (wr1|| x= param)) value)
++                                                          |VarBound(x,_,_) -> (get_tuple_level1 param (rd1, (wr1|| x= param)) value))                  
++                                      |Or'(lst) -> tuples_or (List.map (get_tuple_level1 param (rd1, wr1)) lst)
++                                      |Applic'(car , cdr) -> tuples_or ( (get_tuple_level1 param (rd1, wr1) car) :: (List.map (get_tuple_level1 param (rd1, wr1)) cdr))
++                                      |ApplicTP'(car , cdr) -> tuples_or ( (get_tuple_level1 param (rd1, wr1) car) :: (List.map (get_tuple_level1 param (rd1, wr1)) cdr))
++                                      |LambdaSimple'(params , body) -> (match (List.mem param params) with 
++                                                                        |true-> (rd1, wr1)
++                                                                        |false -> ( get_tuple_level1 param (rd1,wr1) body ))
++                                      |LambdaOpt' (params , opt_param , body) -> (match (List.mem param (opt_param::params) )  with 
++                                                                                |true-> (rd1, wr1)
++                                                                                |false -> ( get_tuple_level1 param (rd1,wr1) body ))
++                                      |Box'(x) -> (rd1, wr1)
++                                      |BoxGet'(x) -> (rd1, wr1)
++                                      |BoxSet'(v, value) -> get_tuple_level1 param (rd1, wr1) value
++
++(********************struct of tuple - for boxing*************************)
++                            
++;;
++
++
++
++
++(********************************************Boxing of variables***********************************************)
++
++
++let annotate_lexical_addresses e = lexical_addressing ([],[]) e;;
++
++let annotate_tail_calls e = tail_calls e false;;
++
++let box_set e =  boxing e;;
+ 
+ let run_semantics expr =
+   box_set
+diff --git a/tag-parser.ml b/tag-parser.ml
+index 138249e..4b7acb3 100644
+--- a/tag-parser.ml
++++ b/tag-parser.ml
+@@ -57,8 +57,206 @@ let reserved_word_list =
+    "unquote-splicing"];;  
+ 
+ (* work on the tag parser starts here *)
++let rec is_proper lst = match lst with
++                        |Nil -> true
++                        |Pair(_, rest) -> (is_proper rest)
++                        |_ -> false ;;
+ 
+-let tag_parse_expressions sexpr = raise X_not_yet_implemented;;
++let rec proper_to_list pair = match pair with
++                              |Nil -> []
++                              |Symbol(x) -> [x]
++                              |Pair(Symbol(x), rest) -> x::(proper_to_list rest)
++                              |_ -> raise X_syntax_error;;
++
++let rec dotted_without_last pair = match pair with 
++                                  |Symbol(x) -> []
++                                  |Pair(Symbol(x), rest) -> x::(dotted_without_last rest)
++                                  |_ -> raise X_syntax_error;;
++
++let rec get_last pair = match pair with 
++                        |Symbol(x) -> x
++                        |Pair(_, rest) -> (get_last rest)
++                        |_ -> raise X_syntax_error;;
++
++(*********************macro cond helpers************)
++let tp_value_rib test = Pair(Symbol("value"), Pair(test, Nil))
++
++let tp_rest_rib dif = Pair(Pair(Symbol("rest"), Pair(Pair(Symbol("lambda"), Pair(Nil, Pair(Pair(Symbol("cond"), dif), Nil))), Nil)), Nil)
++
++let tp_f_rest_rib dit dif = match dif with 
++                            |Nil -> Pair(Pair(Symbol("f"), Pair(Pair(Symbol("lambda"), Pair(Nil, Pair(dit, Nil))), Nil)), Nil)
++                            |_ -> Pair(Pair(Symbol("f"), Pair(Pair(Symbol("lambda"), Pair(Nil, Pair(dit, Nil))), Nil)), (tp_rest_rib dif))
++
++let tp_body dif = match dif with 
++                  |Nil -> Pair(Pair(Symbol("if"), Pair(Symbol("value"), Pair(Pair(Pair(Symbol("f"), Nil), Pair(Symbol("value"), Nil)), Nil))), Nil)         
++                  |_-> Pair(Pair(Symbol("if"), Pair(Symbol("value"), Pair(Pair(Pair(Symbol("f"),Nil), Pair(Symbol("value"), Nil)), Pair(Pair(Symbol("rest"), Nil), Nil)))), Nil)
++(********************* end macro cond helpers************)
++
++let rec tag_parse sexpr = match sexpr with
++                          |Bool(x) ->  Const(Sexpr(sexpr))
++                          |Char(x) ->  Const(Sexpr(sexpr))
++                          |Number(x) ->  Const(Sexpr(sexpr))
++                          |String(x) -> Const(Sexpr(sexpr))
++                          |Nil -> Const(Void)
++                          |Pair(Symbol("quote"), Pair(x, Nil)) -> Const(Sexpr(x))
++                          |Symbol(x) -> (tp_var x)
++                          |Pair(Symbol("if"), Pair(test, Pair(dit, Pair(dif, Nil)))) ->
++                            If((tag_parse test), (tag_parse dit), (tag_parse dif))
++                          |Pair(Symbol("if"), Pair(test, Pair(dit, Nil))) ->
++                            If((tag_parse test), (tag_parse dit), Const(Void))
++                          |Pair(Symbol("lambda"), Pair(args, body)) -> (tp_lambda args body)
++                          |Pair(Symbol("or"), rest) -> (tp_or rest)
++                          |Pair(Symbol("define") ,Pair(Pair(name, argList), body)) -> 
++                            (tag_parse (Pair(Symbol ("define"), Pair(name, Pair(Pair(Symbol("lambda"), Pair(argList, body)), Nil)))))
++                          |Pair(Symbol("define"), Pair(Symbol(name), Pair(body, Nil))) ->  
++                            Def((tp_var name), (tag_parse body))
++                          |Pair(Symbol("set!"), Pair(Symbol(name), Pair(body,Nil))) -> 
++                            Set((tp_var name), (tag_parse body))
++                          |Pair(Symbol("begin"), rest) -> (tp_begin rest)
++                          |Pair(Symbol("quasiquote"), Pair(head, Nil)) -> (tag_parse (tp_quasiquote head))
++                          |Pair(Symbol("and"), rest) -> (tp_and rest)
++                          |Pair(Symbol("let"), Pair(bindings, body)) -> (tp_let bindings body)
++                          |Pair(Symbol("let*"), Pair(bindings, body)) -> (tp_let_star bindings body) 
++                          |Pair(Symbol("letrec"), Pair(bindings, body)) -> (tp_let_rec bindings body) 
++                          |Pair(Symbol("cond"), rest) -> (tp_cond rest)
++                          |Pair(Symbol("pset!"), rest) -> (tp_pset rest)
++                          |Pair(car, cdr) -> Applic((tag_parse car), (flatten_to_expr_list cdr))
++
++
++and tp_var sym = match (List.mem sym reserved_word_list) with
++                |true -> raise X_syntax_error
++                |false -> Var(sym)
++
++and tp_lambda args body = match args , body with
++                          |_,Nil -> raise X_syntax_error
++                          |Nil,_ -> LambdaSimple([], tag_parse (Pair(Symbol("begin"), body)))
++                          |Symbol(vs),_ -> LambdaOpt([], vs, tag_parse (Pair(Symbol("begin"), body)))
++                          |Pair(head, tail),_ -> (match (is_proper args) with
++                                                  |true -> LambdaSimple((proper_to_list args), tag_parse (Pair(Symbol("begin"), body)))
++                                                  |false -> LambdaOpt((dotted_without_last args), (get_last args), tag_parse (Pair(Symbol("begin"), body)))
++                                                 )
++                          |_,_ -> raise X_syntax_error
++
++and flatten_to_expr_list pair = match pair with
++                                |Nil -> []
++                                |Pair(car, cdr) -> (tag_parse car)::(flatten_to_expr_list cdr)
++                                |_ -> raise X_syntax_error
++
++and or_flatten_list pair = match pair with 
++                            |Pair(head, Nil) -> [tag_parse head]
++                            |Pair(head, tail) -> (tag_parse head)::(or_flatten_list tail)
++                            |_ -> raise X_syntax_error
++
++and tp_or rest = match rest with 
++                  |Nil -> Const(Sexpr(Bool(false)))
++                  |Pair(head, Nil) -> (tag_parse head)
++                  |Pair(head, tail) -> Or((or_flatten_list rest))
++                  |_ -> raise X_syntax_error
++
++and seq_flatten_list pair = match pair with 
++                            |Pair(head, Nil) -> (match head with 
++                                                |Pair(Symbol("begin"), rest) -> (seq_flatten_list rest)
++                                                |_-> [tag_parse head] 
++                                                )     
++                            |Pair(head, tail) -> (match head with 
++                                                  |Pair(Symbol("begin"), rest) -> (List.append(seq_flatten_list rest) (seq_flatten_list tail))
++                                                  |_ -> (tag_parse head)::(seq_flatten_list tail)
++                                                 )
++                            |_ -> raise X_syntax_error
++
++and tp_begin rest = match rest with 
++                    |Nil -> Const(Void)
++                    |Pair(head,Nil) -> (tag_parse head)
++                    |Pair(head,tail) -> Seq(seq_flatten_list rest)
++                    |_ -> raise X_syntax_error
++
++(**************************macro - expansions*********************************)
++
++and quasi_pair car cdr = match car ,cdr with
++                        |Symbol("unquote"), Pair(x, Nil) ->  x 
++                        |Symbol("unquote-splicing"), Pair(x, Nil) ->  raise X_syntax_error
++                        |Pair(Symbol("unquote-splicing"), Pair(car, Nil)), _ ->  (Pair(Symbol("append"), Pair(car, Pair((tp_quasiquote cdr), Nil))))
++                        |_, Pair(Symbol("unquote-splicing"), Pair(cdr,Nil)) ->  (Pair(Symbol("cons"), Pair((tp_quasiquote car), Pair(cdr, Nil)))) 
++                        |_,_ ->  (Pair(Symbol("cons"), Pair((tp_quasiquote car), Pair((tp_quasiquote cdr), Nil))))
++
++and tp_quasiquote head = match head with
++                        |Nil ->  (Pair(Symbol("quote"), Pair(head, Nil)))
++                        |Symbol(x) ->  (Pair(Symbol("quote"), Pair(head, Nil))) 
++                        |Pair(car, cdr) -> (quasi_pair car cdr)
++                        |_ -> head
++
++and tp_and rest = match rest with
++                  |Nil -> Const(Sexpr(Bool(true)))
++                  |Pair(head, Nil) -> (tag_parse head)
++                  |Pair(head, tail)-> If((tag_parse head), (tag_parse (Pair(Symbol("and"), tail))), Const(Sexpr(Bool(false))))
++                  |_ -> raise X_syntax_error
++
++and tp_cond rest = match rest with
++                  |Pair(Pair(test, Pair(Symbol("=>"), Pair(dit, Nil))), dif) -> 
++                    tag_parse (Pair(Symbol("let"), Pair(Pair((tp_value_rib test), (tp_f_rest_rib dit dif)), (tp_body dif))))
++                  |Pair(Pair(Symbol("else"), dit), dif) ->  tag_parse (Pair(Symbol("begin"), dit))
++                  |Pair(Pair(test, dit), Nil) -> If((tag_parse test), tag_parse (Pair(Symbol("begin"), dit)), Const(Void))
++                  |Pair(Pair(test, dit), dif) -> If((tag_parse test), tag_parse (Pair(Symbol("begin"), dit)), (tp_cond dif))
++                  |_ -> raise X_syntax_error
++  
++and get_params bindings = match bindings with 
++                          |Nil -> []
++                          |Pair(Pair(Symbol(param), value), Nil) -> [param]
++                          |Pair(Pair(Symbol(param), value), rest) -> param::(get_params rest)
++                          |_ -> raise X_syntax_error
++
++and get_values bindings = match bindings with 
++                          |Nil -> []
++                          |Pair(Pair(param, Pair(value, Nil)), Nil) -> [tag_parse value]
++                          |Pair(Pair(param, Pair(value, Nil)), rest) -> (tag_parse value)::(get_values rest)
++                          |_ -> raise X_syntax_error
++
++and tp_let bindings body = Applic(LambdaSimple((get_params bindings), (tag_parse (Pair(Symbol("begin"), body)))), (get_values bindings))
++
++and tp_let_star bindings body = match bindings with
++                                |Nil -> (tag_parse (Pair(Symbol("let"), Pair(Nil, body))))
++                                |Pair(Pair(param, Pair(value, Nil)), Nil) -> (tag_parse (Pair(Symbol("let"), Pair(Pair(Pair(param, Pair(value, Nil)), Nil), body))))
++                                |Pair(Pair(param, Pair(value, Nil)), ribs) -> (tag_parse (Pair(Symbol("let"), Pair(Pair(Pair(param, Pair(value, Nil)), Nil), Pair(Pair(Symbol("let*"), Pair(ribs, body)), Nil)))))
++                                |_ -> raise X_syntax_error
++
++and tp_let_rec bindings body = match bindings with
++                              |Nil -> (tag_parse (Pair(Symbol("let"), Pair(Nil, body))))
++                              |Pair(rib, ribs) -> (tag_parse (Pair(Symbol("let"), Pair((dont_care_ribs bindings), (set_ribs_and_body bindings body)))))
++                              |_ -> raise X_syntax_error
++
++and dont_care_ribs bindings = match bindings with
++                              |Pair(Pair(Symbol(param), value), Nil) -> Pair(Pair(Symbol(param), Pair(Pair(Symbol("quote"), Pair(Symbol("whatever"), Nil)), Nil)), Nil)
++                              |Pair(Pair(Symbol(param), value), rest) -> Pair(Pair(Symbol(param), Pair(Pair(Symbol("quote"), Pair(Symbol("whatever"), Nil)), Nil)), (dont_care_ribs rest))
++                              |_ -> raise X_syntax_error
++
++and set_ribs_and_body bindings body = match bindings with
++                                      |Pair(Pair(Symbol(param), value), Nil) -> Pair(Pair(Symbol("set!"), Pair(Symbol(param), value)), body)
++                                      |Pair(Pair(Symbol(param), value), rest) -> Pair(Pair(Symbol("set!"), Pair(Symbol(param), value)), (set_ribs_and_body rest body))
++                                      |_ -> raise X_syntax_error
++
++and create_unique_name lst = List.fold_left (fun acc x -> acc ^ x) "" (get_params lst)   
++
++and concat_number num uniqueName = uniqueName ^ (string_of_int num)
++
++and pset_ribs bindings num uniqueName = match bindings with
++                                        |Pair(Pair(Symbol(param), value), Nil) -> Pair(Pair(Symbol((concat_number num uniqueName)), value), Nil)
++                                        |Pair(Pair(Symbol(param), value), rest) -> Pair(Pair(Symbol((concat_number num uniqueName)), value), (pset_ribs  rest (num+1) uniqueName))
++                                        |_ -> raise X_syntax_error
++
++and pset_body bindings num uniqueName = match bindings with
++                                        |Pair(Pair(Symbol(param), value), Nil) -> Pair(Pair(Symbol("set!"), Pair(Symbol(param), Symbol((concat_number num uniqueName)))), Nil)
++                                        |Pair(Pair(Symbol(param), value), rest) -> Pair(Pair(Symbol("set!"), Pair(Symbol(param), Symbol((concat_number num uniqueName)))), (pset_body  rest (num+1) uniqueName))
++                                        |_ -> raise X_syntax_error
++                              
++and tp_pset rest = match rest with 
++                  |Pair(Pair(Symbol(name), Pair(value, Nil)), Nil) -> tag_parse (Pair(Symbol("set!"), Pair(Symbol(name), value)))
++                  |Pair(Pair(Symbol(name), Pair(value, Nil)), ribs) -> tag_parse (Pair(Symbol("let"), Pair((pset_ribs rest 1 (create_unique_name rest)), (pset_body rest 1 (create_unique_name rest)))))
++                  |_ -> raise X_syntax_error
++
++;;
++
++
++let tag_parse_expressions sexpr = ( List.map tag_parse sexpr );;
+ 
+   
+ end;; (* struct Tag_Parser *)

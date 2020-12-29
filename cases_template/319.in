@@ -1,0 +1,2 @@
+LambdaSimple (["x"],
+  Seq [Applic (Var "x", []); Set (Var "x", Applic (Var "x", []))])

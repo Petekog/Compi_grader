@@ -1,0 +1,14 @@
+
+Def' (Var' (VarFree "test"),
+ LambdaSimple' (["x"],
+  LambdaSimple' (["op"],
+   If'
+    (Applic' (Var' (VarFree "eq?"),
+      [Var' (VarParam ("op", 0)); Const' (Sexpr (Symbol "read"))]),
+    LambdaSimple' ([], Var' (VarBound ("x", 1, 0))),
+    If'
+     (Applic' (Var' (VarFree "eq?"),
+       [Var' (VarParam ("op", 0)); Const' (Sexpr (Symbol "write"))]),
+     LambdaSimple' (["val"],
+      Set' (Var' (VarBound ("x", 1, 0)), Var' (VarParam ("val", 0)))),
+     Const' Void)))))

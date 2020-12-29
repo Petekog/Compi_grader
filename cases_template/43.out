@@ -1,0 +1,8 @@
+
+Def' (Var' (VarFree "foo3"),
+ LambdaOpt' (["x"], "y",
+    Seq'
+     [LambdaSimple' ([], VarBound ("x", 0, 0));
+      LambdaSimple' ([], Var' (VarBound ("y", 0, 1)));
+      LambdaSimple' ([],
+       Set' (VarBound ("x", 0, 0), Var' (VarBound ("y", 0, 1))))]))

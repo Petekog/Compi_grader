@@ -1,0 +1,13 @@
+
+LambdaSimple' (["x"; "y"; "z"],
+ Seq'
+  [Set' (Var' (VarParam ("x", 0)), Box' (VarParam ("x", 0)));
+   Seq'
+    [LambdaSimple' (["y"],
+      Seq'
+       [BoxSet' (VarBound ("x", 0, 0), Const' (Sexpr (Number (Int 5))));
+        ApplicTP' (Var' (VarFree "+"),
+         [VarBound ("x", 0, 0); Var' (VarParam ("y", 0))])]);
+     ApplicTP' (Var' (VarFree "+"),
+      [VarParam ("x", 0); Var' (VarParam ("y", 1));
+       Var' (VarParam ("z", 2))])]])

@@ -1,0 +1,350 @@
+diff --git a/readme.txt b/readme.txt
+index e69de29..638ccb0 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1 @@
++I lynn nabulsy 319091401 assert that the work we submitted is 100% our own. We have not received anypart from any other student in the class, nor have we give parts of it for use to others.Nor have we used code from other sources: Courses taught previously at this university,courses taught at other universities, various bits of code found on the internet, etc.We realize that should our code be found to contain code from other sources, that aformal case shall be opened against us withva’adat mishma’at, in pursuit of disciplinaryaction.
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..a7a880c 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -68,7 +68,7 @@ module type SEMANTICS = sig
+ end;;
+ 
+ module Semantics : SEMANTICS = struct
+-
++(*
+ let annotate_lexical_addresses e = raise X_not_yet_implemented;;
+ 
+ let annotate_tail_calls e = raise X_not_yet_implemented;;
+@@ -80,6 +80,328 @@ let run_semantics expr =
+     (annotate_tail_calls
+        (annotate_lexical_addresses expr));;
+   
+-end;; (* struct Semantics *)
++(* struct Semantics *)
++*)
++
++let rec major_index_of_var (var, lexlist, depth)=
++  match lexlist with
++  | [] -> -1
++  | hd :: tl -> if (List.mem var hd) then depth else major_index_of_var(var, tl, depth+1)
++ 
++let rec minor_index_of_var (var, lexlist, depth)=
++  match lexlist with
++  | [] -> raise X_syntax_error
++  | hd::tl -> if (String.equal hd var) then depth else minor_index_of_var(var, tl, depth+1);;
++
++
++let replace_var var lexlist = 
++ let major_index = major_index_of_var(var, lexlist, 0) in
++ match major_index with
++ | -1 -> Var'(VarFree(var))
++ | n ->
++  let minor_index = minor_index_of_var(var, List.nth lexlist major_index, 0) in
++    match n, minor_index with
++    | 0, m -> Var'(VarParam(var, m))
++    | j, m -> Var'(VarBound(var, j-1, m))
++
++
++let make_var v = 
++  match v with 
++  | Var'(a) -> a
++  |_->  raise X_syntax_error ;;
++    
++
++let rec anottate expr lexenv= 
++  match expr with 
++  | Const(a) -> Const'(a)
++  | Var(a) -> replace_var a lexenv
++  | If(a,b,c) -> If'(anottate a lexenv, anottate b lexenv,anottate c lexenv)
++  | Seq(a) -> Seq'(List.map (fun x -> anottate x lexenv) a)
++  | Set(a,b) ->let v =(make_var (anottate a lexenv))  in Set'(v, anottate b lexenv)
++  | Def(a,b) -> let v =(make_var (anottate a lexenv)) in Def' (v, anottate b lexenv)
++  | Or(a) -> Or'( List.map  (function x -> anottate x lexenv) a)
++  | LambdaSimple(a,b) -> LambdaSimple'(a , anottate b (a::lexenv ))
++  | LambdaOpt(a,b,c) -> LambdaOpt'(a, b, anottate c ((a@[b])::lexenv ))
++  | Applic(a,b) -> Applic'(anottate a lexenv ,List.map  (function x -> anottate x lexenv) b)
++  ;;
++  
++let rec tail_list lst =
++  match lst with
++  | []    -> []
++  | a::[] -> [tail_position a]
++  | a::b  -> (tail_call a)::tail_list b
++  
++and tail_position expr =
++  match expr with
++  | Const'(a)            -> expr
++  | Var'(s)              -> expr
++  | If'(a, b, c)         -> If'(a, tail_position b, tail_position c)
++  | Seq'(a)              -> Seq'(tail_list a)
++  | Set'(a, b)           -> Set'(a, tail_call b)
++  | Def'(a, b)           -> Def'(a, tail_call b)
++  | Or'(a)               -> Or'(tail_list a)
++  | LambdaSimple'(a, b)  -> LambdaSimple'(a, tail_position b)
++  | LambdaOpt'(a, b, c)  -> LambdaOpt'(a, b, tail_position c)	
++  | Applic'(a, b)        -> ApplicTP'(tail_call a, List.map tail_call b)
++  | _                    -> raise X_syntax_error
++  
++and tail_call expr =
++  match expr with
++  | Const'(a)            -> expr
++  | Var'(s)              -> expr
++  | If'(a, b, c)         -> If'(tail_call a, tail_call b, tail_call c)
++  | Seq'(a)              -> Seq'(List.map tail_call a)
++  | Set'(a, b)           -> Set'(a, tail_call b)
++  | Def'(a, b)           -> Def'(a, tail_call b)
++  | Or'(a)               -> Or'(List.map tail_call a)
++  | LambdaSimple'(a, b)  -> LambdaSimple'(a, tail_position b)
++  | LambdaOpt'(a, b, c)  -> LambdaOpt'(a, b, tail_position c)
++  | Applic'(a, b)        -> Applic'(tail_call a, List.map tail_call b)
++  | _                    -> raise X_syntax_error;;
++
++  
++let car x= match x with 
++|(a,b) ->a 
++
++let cdr x= match x with 
++|(a,b) ->b 
++
++let seq_flat list_seq = 
++ match list_seq with 
++  | Seq'(a) -> a
++  | _-> raise X_syntax_error
++
++let is_seq list_seq = 
++  match list_seq with 
++  | Seq'(a) -> true
++  | _ -> false
++
++let append l1 l2 =
++  let rec loop acc l1 l2 =
++    match l1, l2 with
++    | [], [] -> List.rev acc
++    | [], h :: t -> loop (h :: acc) [] t
++    | h :: t, l -> loop (h :: acc) t l
++    in
++    loop [] l1 l2
++
++let rec flatseq ls =
++  match ls with
++  | [] -> []
++  | [Seq'(x)]-> x
++  | hd :: tl -> if (is_seq hd) then  (append (seq_flat hd) (flatseq tl )) else hd::(flatseq tl );;
+ 
++let rec box_do var expr minor flag= 
++  let rec box_do_inside _expr_ =
++    match _expr_ with
++    | Const'(a)      -> _expr_
++    | Var'(s)       -> if (String.compare (get_var_str s) var == 0) then BoxGet'(s) else _expr_
++    | If'(a, b, c)  -> If'(box_do_inside a, box_do_inside b, box_do_inside c)
++    | Seq'(a)       -> Seq'(List.map (fun x -> box_do_inside x) a)
++    | Set'(s, b)    -> if (String.compare (get_var_str s) var == 0) then BoxSet'(s, box_do_inside b) else Set'(s, box_do_inside b)
++    | Def'(a, b)                                            -> Def'(a, box_do_inside b)
++    | Or'(a)                                                -> Or'(List.map (fun x -> box_do_inside x) a)
++    | LambdaSimple'(a, b)                                   -> if not (var_is_param var _expr_) then LambdaSimple'(a, box_do_inside b) else box_check _expr_
++    | LambdaOpt'(a, b, c)                                   -> if not (var_is_param var _expr_) then LambdaOpt'(a, b, box_do_inside c) else box_check _expr_
++    | Applic'(a, b)                                         -> Applic'(box_do_inside a, (List.map (fun x -> box_do_inside x) b))
++    | ApplicTP'(a, b)                                         -> ApplicTP'(box_do_inside a, (List.map (fun x -> box_do_inside x) b))
++    | Box'(a)                                               -> _expr_
++    | BoxGet'(a)                                            -> _expr_
++    | BoxSet'(a, b)                                         -> BoxSet'(a, box_do_inside b) in
++  
++  if (flag == 1) then
++  match expr with
++  | Seq'(a)  -> Seq'(Set'(VarParam(var, minor), Box'(VarParam(var, minor)))::(List.map box_do_inside a))
++  | _ -> raise X_syntax_error
++  else 
++  let ans=  Seq'(Set'(VarParam(var, minor), Box'(VarParam(var, minor)))::[(box_do_inside expr)]) in  Seq'(flatseq (seq_flat ans))
++    
++and var_is_param var expr=
++  match expr with
++  | LambdaSimple'(a, b)   -> List.mem var a
++  | LambdaOpt'(a, b, c)   -> (List.mem var a) || (String.compare var b == 0)
++  | _ -> raise X_syntax_error
++
++and get_var_str var=
++  match var with
++  |VarFree(s)         -> s
++  |VarParam(s, _)     -> s
++  |VarBound(s, _, _)  -> s
++
++and rib_check var expr=
++  match expr with
++  | Const'(a)                                             -> [false; false]
++  | Var'(s)                                               -> [(String.compare (get_var_str s) var == 0); false]
++  | If'(a, b, c)                                          -> pair_combine [rib_check var a; rib_check var b; rib_check var c]
++  | Seq'(a)                                               -> pair_combine (List.map (fun x -> rib_check_rule3 var x) a)
++  | Set'(s, b)                                      -> pair_combine [[false; (String.compare (get_var_str s) var == 0)]; rib_check var b]
++  | Def'(a, b)                                            -> rib_check var b
++  | Or'(a)                                                -> pair_combine (List.map (fun x -> rib_check var x) a)
++  | LambdaSimple'(a, b)                                   -> if not (var_is_param var expr) then rib_check var b else [false; false]
++  | LambdaOpt'(a, b, c)                                   -> if not (var_is_param var expr) then rib_check var c else [false; false]
++  | Applic'(a, b)                                         -> pair_combine[rib_check var a; pair_combine (List.map (fun x -> rib_check var x) b)]
++  | ApplicTP'(a, b)                                         -> pair_combine[rib_check var a; pair_combine (List.map (fun x -> rib_check var x) b)]
++  | Box'(a)                                               -> [false; false]
++  | BoxGet'(a)                                            -> [false; false]
++  | BoxSet'(a, b)                                         -> rib_check var b
++
++and is_bound v= 
++match v with 
++|VarBound(_, _, _)  -> true
++| _ -> false
++
++
++and rib_check_rule3 var expr=
++  match expr with
++  | Const'(a)                                             -> [false; false]
++  | Var'(s) ->if is_bound s then  [(String.compare (get_var_str s) var == 0); false] else [false; false]
++  | If'(a, b, c)                                          -> pair_combine [rib_check_rule3 var a; rib_check_rule3 var b; rib_check_rule3 var c]
++  | Seq'(a)                                               -> pair_combine (List.map (fun x -> rib_check_rule3 var x) a)
++  | Set'(s, b) ->if is_bound s then pair_combine [[false; (String.compare (get_var_str s) var == 0)]; rib_check_rule3 var b] else [false; false]
++  | Def'(a, b)                                            -> rib_check_rule3 var b
++  | Or'(a)                                                -> pair_combine (List.map (fun x -> rib_check_rule3 var x) a)
++  | LambdaSimple'(a, b)                                   -> if not (var_is_param var expr) then rib_check_rule3 var b else [false; false]
++  | LambdaOpt'(a, b, c)                                   -> if not (var_is_param var expr) then rib_check_rule3 var c else [false; false]
++  | Applic'(a, b)                                         -> pair_combine[rib_check_rule3 var a; pair_combine (List.map (fun x -> rib_check_rule3 var x) b)]
++  | ApplicTP'(a, b)                                         -> pair_combine[rib_check_rule3 var a; pair_combine (List.map (fun x -> rib_check_rule3 var x) b)]
++  | Box'(a)                                               -> [false; false]
++  | BoxGet'(a)                                            -> [false; false]
++  | BoxSet'(a, b)                                         -> rib_check_rule3 var b
++ 
++ 
++and pair_combine pairlst=
++  [List.exists (fun x -> List.hd x) pairlst; List.exists (fun x -> List.hd (List.tl x)) pairlst]
++
++and var_check_self var expr=
++  match expr with
++  | Const'(a)                                             -> [false; false]
++  | Var'(s)                                               -> [(String.compare (get_var_str s) var == 0); false]
++  | If'(a, b, c)                                          -> pair_combine [var_check_self var a; var_check_self var b; var_check_self var c]
++  | Seq'(a)                                               -> pair_combine (List.map (fun x -> var_check_self_rule3 var x) a)
++  | Set'(s, b)                                      -> pair_combine [[false; (String.compare (get_var_str s) var == 0)]; var_check_self var b]
++  | Def'(a, b)                                            -> var_check_self var b
++  | Or'(a)                                                -> pair_combine (List.map (fun x -> var_check_self var x) a)
++  | LambdaSimple'(a, b)                                   -> [false; false]
++  | LambdaOpt'(a, b, c)                                   -> [false; false]
++  | Applic'(a, b)                                         -> pair_combine[var_check_self var a; pair_combine (List.map (fun x -> var_check_self var x) b)]
++  | ApplicTP'(a, b)                                         -> pair_combine[var_check_self var a; pair_combine (List.map (fun x -> var_check_self var x) b)]
++  | Box'(a)                                               -> [false; false]
++  | BoxGet'(a)                                            -> [false; false]
++  | BoxSet'(a, b)                                         -> var_check_self var b
++ 
++and var_check_self_rule3 var expr=
++  match expr with
++  | Const'(a)                                             -> [false; false]
++  | Var'(s)                                               ->if is_bound s then  [(String.compare (get_var_str s) var == 0); false] else  [false;false]
++  | If'(a, b, c)                                          -> pair_combine [var_check_self_rule3 var a; var_check_self_rule3 var b; var_check_self_rule3 var c]
++  | Seq'(a)                                               -> pair_combine (List.map (fun x -> var_check_self_rule3 var x) a)
++  | Set'(s, b)                                      ->if is_bound s then pair_combine [[false; (String.compare (get_var_str s) var == 0)]; var_check_self_rule3 var b] else pair_combine [[false;false];var_check_self_rule3 var b]
++  | Def'(a, b)                                            -> var_check_self_rule3 var b
++  | Or'(a)                                                -> pair_combine (List.map (fun x -> var_check_self_rule3 var x) a)
++  | LambdaSimple'(a, b)                                   -> [false; false]
++  | LambdaOpt'(a, b, c)                                   -> [false; false]
++  | Applic'(a, b)                                         -> pair_combine[var_check_self_rule3 var a; pair_combine (List.map (fun x -> var_check_self_rule3 var x) b)]
++  | ApplicTP'(a, b)                                         -> pair_combine[var_check_self_rule3 var a; pair_combine (List.map (fun x -> var_check_self_rule3 var x) b)]
++  | Box'(a)                                               -> [false; false]
++  | BoxGet'(a)                                            -> [false; false]
++  | BoxSet'(a, b)                                         -> var_check_self_rule3 var b
++
++and comparelists getlist setlist=
++  List.exists (fun x -> List.exists (fun y -> (not ((car x) == (car y) )) ) getlist) setlist
++
++and lambda_var_check var expr (orig:expr')=
++  (let getlists : (expr'*int) list ref = ref [] in
++  let setlists : (expr'*int) list ref = ref [] in
++  let i=0 in
++  let rec innerfunction expr (orig:expr' option)=
++    (begin
++      (match orig with
++      | None -> ()
++      | Some(a) ->if is_seq a then let results = var_check_self_rule3 var expr in
++        (match results with
++        | [getbool; setbool] -> 
++          (begin
++            if getbool then getlists := (a, i+1)  :: !getlists else () ;
++            if setbool then setlists := (a, i+1)  :: !setlists else ()
++          end) | _ -> raise X_syntax_error
++          )else 
++          let results = var_check_self var expr in
++          (match results with
++          | [getbool; setbool] -> 
++            (begin
++              if getbool then getlists := (a, i+1)  :: !getlists else () ;
++              if setbool then setlists := (a, i+1)  :: !setlists else ()
++            end)
++        | _ -> raise X_syntax_error)) ;
++      (match expr with
++      | Const'(a)                                             -> ()
++      | Var'(s)                                               -> ()
++      | If'(a, b, c)                                          -> (begin innerfunction a None ; innerfunction b None ; innerfunction c None end)
++      | Seq'(a)                                               -> List.iter (fun x -> innerfunction x None) a   
++      | Set'(s, b)                                      -> innerfunction b None   
++      | Def'(a, b)                                            -> innerfunction b None
++      | Or'(a)                                                ->  List.iter (fun x -> innerfunction x None) a
++      | LambdaSimple'(a, b)                                   -> (if (not (var_is_param var expr)) (*if var is not param*)then let results = if is_seq b then rib_check_rule3 var b else rib_check var b in (*add here if b is seq then check rule 3*)
++          (match results with
++          | [getbool; setbool] ->
++            (begin 
++             if getbool then getlists := (expr, i+1) :: !getlists else () ; (*if there is a read accur then getlists will point to the updated getlists with expr*)
++             if setbool then setlists := (expr, i+1)  :: !setlists else ()
++           end)
++          | _ -> raise X_syntax_error) else ())
++      | LambdaOpt'(a, b, c)                                   -> (if (not (var_is_param var expr)) then let results = rib_check var c in 
++          (match results with
++          | [getbool; setbool] ->
++            (begin 
++              if getbool then getlists :=  (expr, i+1) :: !getlists else () ;
++              if setbool then setlists :=  (expr, i+1) :: !setlists else ()
++            end)
++          | _ -> raise X_syntax_error) else ())
++        | Applic'(a, b)                                       -> (begin innerfunction a None ;  List.iter (fun x -> innerfunction x None) b end)
++        | ApplicTP'(a, b)                                       -> (begin innerfunction a None ;  List.iter (fun x -> innerfunction x None) b end)
++        | Box'(a)                                               -> ()
++        | BoxGet'(a)                                            -> ()
++        | BoxSet'(a, b)                                         -> innerfunction b None)
++      end) in
++      (begin 
++       innerfunction expr (Some orig);
++       comparelists !getlists !setlists
++      
++    end))
++
++ (*evrytime we get in the lambda, loop on params and check if we need to box*)   
++ and lambda_box_do vars expr (orig:expr') minor flag=
++   match vars with
++   | [] -> box_check expr
++   | a::b -> if (lambda_var_check a expr orig) then let _expr_ = box_do a expr minor flag in lambda_box_do b _expr_ orig (minor - 1) 1 else lambda_box_do b (box_check expr) orig (minor - 1) flag
++   
++ 
++ and box_check (expr : expr')=
++   match expr with
++   | Const'(a)                                             -> expr
++   | Var'(s)                                               -> expr
++   | If'(a, b, c)                                          -> If'(box_check a, box_check b, box_check c)
++   | Seq'(a)                                               -> Seq'(List.map (fun x -> box_check x) a)
++   | Set'(a, b)                                            -> Set'(a, box_check b)
++   | Def'(a, b)                                            -> Def'(a, box_check b)
++   | Or'(a)                                                -> Or'(List.map (fun x -> box_check x) a)
++   | LambdaSimple'(a, b)                                   -> LambdaSimple'(a, lambda_box_do (List.rev a) b expr ((List.length a)-1) 0)  (* params : vars, body, origin exp, minor, flag*)
++   | LambdaOpt'(a, b, c)                                   -> LambdaOpt'(a, b, lambda_box_do (List.rev (a@[b])) c expr (List.length a) 0)
++   | Applic'(a, b)                                         -> Applic'(box_check a, List.map (fun x -> box_check x) b)
++   | ApplicTP'(a, b)                                       -> ApplicTP'(box_check a, List.map (fun x -> box_check x) b)
++   | Box'(a)                                               -> expr
++   | BoxGet'(a)                                            -> expr
++   | BoxSet'(a, b)                                         -> BoxSet'(a, box_check b);;
++
++let annotate_lexical_addresses e = anottate e [];;
++
++let annotate_tail_calls e = tail_call e;;
++
++let box_set e = box_check e;;
++ 
++let run_semantics expr =
++  box_set
++    (annotate_tail_calls
++      (annotate_lexical_addresses expr));;
+ 
++end;;
+\ No newline at end of file

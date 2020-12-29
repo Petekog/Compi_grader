@@ -1,0 +1,9 @@
+
+Def' (Var' (VarFree "test"),
+ LambdaSimple' (["x"; "y"],
+  ApplicTP' (Var' (VarFree "list"),
+   [LambdaSimple' ([],
+     Set' (Var' (VarBound ("x", 0, 0)),
+      Applic' (Var' (VarFree "+"),
+       [Var' (VarBound ("x", 0, 0)); Const' (Sexpr (Number (Fraction (1, 1))))])));
+    LambdaSimple' ([], Var' (VarBound ("y", 0, 1)))])))

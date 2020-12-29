@@ -1,0 +1,3 @@
+LambdaSimple (["x"; "y"; "z"; "w"],
+ If (Applic (Var "even?", [Var "x"]), Applic (Var "y", [Var "w"]),
+  Applic (Var "z", [Var "w"])))

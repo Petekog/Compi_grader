@@ -1,27 +1,25 @@
-Subject,Tests numbers,Weight
-boolean,1/2,2
-named char,3/4/5/6/7,2
-visible char,8/114/115/116,2
-one digit natural,9/119/120,1
-natural,73/77/80,2
-integer,10/11/15,3
-fraction,123/124/125/126/127/128,4
-float,12/13/14/16/17/74/75/76,5
-string without meta chars,37/40/72,3
-string with meta chars,38/39,8
-symbol,41/42/43/44,2
-nil,78/79,1
-pair,28/117/118,2
-proper list,30/32/35/64/65/66,5
-improper list,29/31/33/34/36/62/63,5
-quote,58/100/101/102/103,2
-quasiquote,59/107/108/109,2
-unquote,60/104/105/106,2
-unquote splicing,61/110/111/112/113,3
-scientific notation,21/22/23/67/68,4
-sexpr comment,24/25/26/27/57,4
-line comment,81/82/83,2
-case-sensitivity: visible simple char and string literal char,84/85/86/87,2
-case-insensitivity: except visible simple char and string literal char,88/89/90/91/92/93/121,2
-integration of components,94/95/96/97/122/98/99/133/134/129/130/131/132,30
-Total,117,100
+what to check,cases,score precentage
+simple tail-call apllications in lambda simple/opt,"312,36",5
+sequences: tc-application only  in the last element,"28,305,503",3
+or: tc-application only in the last element,"74,302,30",3
+nested lambdas with multiple  tail-call-applications,"25,306,308,37,38,39,40,41,42,49",3
+no tail-call application: no applications at all,"59,300,1",2
+no tail-call applications at top level,"31,301",2
+no tail-call applications in set-expression,"20,304,307,311",2
+no tail-call applications in if-expression,"48,303,310",2
+integrate different tests,"3,17,18,24,26,27,29,32,33,34,47",8
+only global variables,"63,317,316",2
+only parameters,"7,82,319,318",2
+only bound variables,"81,406,500",4
+shadowing (nested lambdas with same parameter name),"5,72,73",4
+integrate different tests,"6,54,55,60,61,21",8
+No boxing: only read instances,"16,200,212,213,214",2
+No boxing: only write instances,"216,2,201,202,204,209",2
+No boxing: read and write instances on the same closure,"15,211,215,218,309,19,45",2
+No boxing: read and write instances share same rib env,"56,220,221",5
+no boxing: read and write instances are of form 1,"10,206,207,208",3
+no boxing: read and write instances are of form 2,"22,210,217,8,23,43",3
+boxing: simple boxing tests (all of the read-write pairs indicate that boxing should occur),"11,35,44,57",8
+"boxing: complex boxing tests: some variables should not be boxed, some should but not all of the read-write pairs for the same variable should indicate that boxing should occur. ","205,501",10
+integration of all parts,"51,52,53",15
+,,100

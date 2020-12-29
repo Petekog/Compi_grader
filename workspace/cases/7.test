@@ -1,0 +1,22 @@
+#use "semantic-analyser.ml";;
+   
+let input = Semantics.run_semantics  (Def (Var "a",
+  Applic
+   (LambdaSimple ([],
+     LambdaOpt ([], "x",
+      Seq
+       [Var "x";
+        LambdaOpt ([], "y", Set (Var "y", Const (Sexpr (Number (Fraction (1, 1))))))])),
+   [])));;
+
+let output = Def' (Var' (VarFree "a"),
+ Applic'
+  (LambdaSimple' ([],
+    LambdaOpt' ([], "x",
+     Seq'
+      [Var' (VarParam ("x", 0));
+       LambdaOpt' ([], "y",
+        Set' (Var' (VarParam ("y", 0)), Const' (Sexpr (Number (Fraction (1, 1))))))])),
+  []));;                       
+Printf.printf "%b" (List.for_all2 expr'_eq  [input] [output]);;
+

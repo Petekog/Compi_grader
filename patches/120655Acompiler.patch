@@ -1,0 +1,1419 @@
+diff --git a/reader.ml b/reader.ml
+index 32445c2..c75888f 100644
+--- a/reader.ml
++++ b/reader.ml
+@@ -1,46 +1,313 @@
+-
+-#use "pc.ml";;
+-
+-exception X_not_yet_implemented;;
+-exception X_this_should_not_happen;;
+-  
+-type number =
+-  | Fraction of int * int
+-  | Float of float;;
+-  
+-type sexpr =
+-  | Bool of bool
+-  | Nil
+-  | Number of number
+-  | Char of char
+-  | String of string
+-  | Symbol of string
+-  | Pair of sexpr * sexpr;;
+-
+-let rec sexpr_eq s1 s2 =
+-  match s1, s2 with
+-  | Bool(b1), Bool(b2) -> b1 = b2
+-  | Nil, Nil -> true
+-  | Number(Float f1), Number(Float f2) -> abs_float(f1 -. f2) < 0.001
+-  | Number(Fraction (n1, d1)), Number(Fraction (n2, d2)) -> n1 = n2 && d1 = d2
+-  | Char(c1), Char(c2) -> c1 = c2
+-  | String(s1), String(s2) -> s1 = s2
+-  | Symbol(s1), Symbol(s2) -> s1 = s2
+-  | Pair(car1, cdr1), Pair(car2, cdr2) -> (sexpr_eq car1 car2) && (sexpr_eq cdr1 cdr2)
+-  | _ -> false;;
+-
+-module Reader: sig
+-  val read_sexprs : string -> sexpr list
+-end
+-= struct
+-let normalize_scheme_symbol str =
+-  let s = string_to_list str in
+-  if (andmap
+-	(fun ch -> (ch = (lowercase_ascii ch)))
+-	s) then str
+-  else Printf.sprintf "|%s|" str;;
+-
+-
+-let read_sexprs string = raise X_not_yet_implemented;;
+-  
+-end;; (* struct Reader *)
++#use "pc.ml";;
++
++exception X_not_yet_implemented;;
++exception X_this_should_not_happen;;
++
++type number =
++  | Fraction of int * int
++  | Float of float;;
++
++type sexpr =
++  | Bool of bool
++  | Nil
++  | Number of number
++  | Char of char
++  | String of string
++  | Symbol of string
++  | Pair of sexpr * sexpr;;
++
++let rec sexpr_eq s1 s2 =
++  match s1, s2 with
++  | Bool(b1), Bool(b2) -> b1 = b2
++  | Nil, Nil -> true
++  | Number(Float f1), Number(Float f2) -> abs_float(f1 -. f2) < 0.001
++  | Number(Fraction (n1, d1)), Number(Fraction (n2, d2)) -> n1 = n2 && d1 = d2
++  | Char(c1), Char(c2) -> c1 = c2
++  | String(s1), String(s2) -> s1 = s2
++  | Symbol(s1), Symbol(s2) -> s1 = s2
++  | Pair(car1, cdr1), Pair(car2, cdr2) -> (sexpr_eq car1 car2) && (sexpr_eq cdr1 cdr2)
++  | _ -> false;;
++
++module Reader: sig
++  val read_sexprs : string -> sexpr list
++end
++= struct
++open PC;;
++
++let normalize_scheme_symbol str =
++  let s = string_to_list str in
++  if (andmap
++	(fun ch -> (ch = (lowercase_ascii ch)))
++	s) then str
++  else Printf.sprintf "|%s|" str;;
++
++(*
++------------ literal characters parsers ------------
++*)
++let nt_char_digit = (range '0' '9');;
++let nt_char_backslash = char '\\';;
++let nt_char_double_quote = char '"';;
++let nt_char_hashtag = char '#';;
++let nt_char_open_parentheses = char '(';;
++let nt_char_close_parentheses = char ')';;
++let nt_lowercase = range 'a' 'z';;
++let nt_uppercase = range 'A' 'Z';;
++let nt_new_line_feed = char '\n';;
++let nt_dot = char '.';;
++
++(*
++------------ cross-cutting & utility functions ------------
++*)
++let list_to_lowercase_string s =
++  String.concat "" (List.map (fun ch -> String.make 1 (lowercase_ascii ch)) s);;
++
++let make_ignored nt = pack nt (fun _ -> ());;
++
++let make_special_token_list base_list nt_token =
++  let nt_special_list = List.map (fun (special_token, token_value) ->
++                                    pack (nt_token special_token)
++                                         (fun _ -> token_value))
++                                 base_list in
++  disj_list nt_special_list;;
++
++(* ----- Option ----- *)
++let option_value_or_default default = function
++  | Some value -> value
++  | None -> default;;
++let pack_option nt_opt default =
++  pack nt_opt (option_value_or_default default);;
++
++(* ----- Delimiters ----- *)
++let make_paired nt_left nt_right nt =
++    let nt = caten nt_left nt in
++    let nt = pack nt (function(_, e) -> e) in
++    let nt = caten nt nt_right in
++    let nt = pack nt (function(e, _) -> e) in
++    nt;;
++let make_paired_sym nt_sides nt = make_paired nt_sides nt_sides nt;;
++let make_delimited_pair nt_left nt_right nt_delim =
++  pack (caten (caten nt_left nt_delim) nt_right)
++       (fun ((left, _), right) -> (left, right));;
++let make_delimited_on_left nt_delimiter nt = pack (caten nt_delimiter nt) (fun (_, value) -> value);;
++
++(*
++------------ whitespaces ------------
++*)
++let nt_whitespaces = star nt_whitespace;;
++let make_spaced nt = make_paired_sym nt_whitespaces nt;;
++
++let nt_line_comment =
++  let nt_dot_wildcard = diff nt_any nt_new_line_feed in
++  let comment_prefix = char ';' in
++  let comment_end = disj (make_ignored nt_end_of_input) (make_ignored nt_new_line_feed) in
++  make_paired comment_prefix comment_end (star nt_dot_wildcard)
++
++(*
++------------ symbols ------------
++*)
++let nt_symbol_char_no_dot =
++  let punctuation_char_list = string_to_list "!$^*-_+=<>/?:" in
++  let nt_punctuation_list = List.map char punctuation_char_list in
++  let nt_chars_alpha_numeric = [nt_char_digit; nt_lowercase; nt_uppercase] in
++  let nt_symbol_char_no_dot_list = nt_chars_alpha_numeric @ nt_punctuation_list in
++  disj_list nt_symbol_char_no_dot_list;;
++
++let nt_symbol_char = disj nt_symbol_char_no_dot nt_dot;;
++
++let nt_symbol =
++  let nt_noDot_with_starOfSymbolChar = caten nt_symbol_char_no_dot (star nt_symbol_char) in
++  let nt_dot_with_plusOfSymbolChar = caten nt_dot (plus nt_symbol_char) in
++
++  let parser = disj nt_noDot_with_starOfSymbolChar nt_dot_with_plusOfSymbolChar in
++  let packer = fun (e, es) -> Symbol(list_to_lowercase_string (e :: es)) in
++  pack parser packer;;
++
++(*
++------------ boolean ------------
++*)
++let nt_boolean_greedy_take =
++  let nt_boolean_values = make_special_token_list [('f', false); ('t', true)] char_ci in
++  let parser = make_delimited_on_left nt_char_hashtag nt_boolean_values in
++  pack parser (fun b -> Bool(b));;
++
++let nt_boolean = not_followed_by nt_boolean_greedy_take nt_symbol_char;;
++
++(*
++------------ characters ------------
++*)
++let nt_visible_simple_char = diff nt_any nt_whitespace;;
++let nt_named_char =
++  let named_chars_list = [
++    ("nul", '\000');
++    ("newline", '\n');
++    ("page", '\012');
++    ("return", '\r');
++    ("space", ' ');
++    ("tab", '\t')
++  ] in
++  make_special_token_list named_chars_list word_ci;;
++
++let nt_char_char = disj nt_named_char nt_visible_simple_char;;
++let nt_char_greedy_take =
++  let nt_sexpr_char_prefix = caten nt_char_hashtag nt_char_backslash in
++  let parser = make_delimited_on_left nt_sexpr_char_prefix nt_char_char in
++  pack parser (fun ch -> Char(ch));;
++
++let nt_char = not_followed_by nt_char_greedy_take nt_symbol_char;;
++
++(*
++------------ numbers ------------
++
++TODO: fix backtracking
++*)
++let nt_char_digit_list = plus nt_char_digit;;
++
++let nt_char_sign_raw = disj (char '+') (char '-');;
++let nt_optional_char_sign = maybe nt_char_sign_raw;;
++let nt_char_sign = pack_option nt_optional_char_sign '+';;
++
++let make_raw_int nt_int_string = pack nt_int_string (fun s -> int_of_string s);;
++
++let nt_natural_string = pack nt_char_digit_list (fun s -> list_to_string s);;
++let nt_natural = make_raw_int nt_natural_string;;
++
++let nt_signed_integer_string =
++  let packer = fun (s, n) -> list_to_string (s :: n) in
++  pack (caten nt_char_sign nt_char_digit_list) packer;;
++let nt_int_raw = make_raw_int nt_signed_integer_string;;
++
++let nt_integer = pack nt_int_raw (fun n -> Fraction(n, 1));;
++let nt_fraction =
++  let nt_char_op_div = char '/' in
++  let parser = make_delimited_pair nt_int_raw nt_natural nt_char_op_div in
++  let packer =
++    let rec gcd n m =
++      if m = 0 then n
++      else gcd m (n mod m) in
++    fun (nom, dom) ->
++      let gcd = gcd (abs nom) dom in
++      Fraction(nom / gcd, dom / gcd) in
++  pack parser packer;;
++
++let make_float_from_string nt_float_raw_string = pack nt_float_raw_string (fun f_s -> Float (float_of_string f_s));;
++let nt_float_point_string =
++  let nt_char_frac_delim = char '.' in
++  let mantissa_whole = nt_signed_integer_string in
++  let mantisaa_frac = nt_natural_string in
++  let parser = make_delimited_pair mantissa_whole mantisaa_frac nt_char_frac_delim in
++  let packer = (fun (m_int, m_frac) -> Printf.sprintf "%s.%s" m_int m_frac) in
++  pack parser packer;;
++
++let nt_float_point = make_float_from_string nt_float_point_string;;
++let nt_float_scientific_string =
++  let nt_char_ci_exp = char_ci 'e' in
++  let nt_base = disj nt_float_point_string nt_signed_integer_string in
++  let parser = make_delimited_pair nt_base nt_signed_integer_string nt_char_ci_exp in
++  let pack_float_scientific = fun (base, exp) -> Printf.sprintf "%se%s" base exp in
++  pack parser pack_float_scientific;;
++let nt_float_scientific = make_float_from_string nt_float_scientific_string;;
++
++let nt_number_greedy_take =
++  let parsers_list = [
++    nt_float_scientific;
++    nt_float_point;
++    nt_fraction;
++    nt_integer
++  ] in
++  pack (disj_list parsers_list) (fun num -> Number(num));;
++
++let nt_number = not_followed_by nt_number_greedy_take (diff nt_symbol_char nt_char_digit);;
++
++(*
++------------ string ------------
++*)
++let nt_string_literal_char = diff nt_any (disj (char '\\') (char '"'));;
++let nt_string_meta_char =
++  let parser_string_meta_char_inner =
++    let string_meta_char_list = [
++      ('\\', '\\');
++      ('"', '"');
++      ('t', '\t');
++      ('f', '\012');
++      ('n', '\n');
++      ('r', '\r')
++    ] in
++    make_special_token_list string_meta_char_list char_ci in
++  make_delimited_on_left nt_char_backslash parser_string_meta_char_inner
++
++
++let nt_string_char = disj nt_string_literal_char nt_string_meta_char;;
++let nt_string =
++  let parser = make_paired_sym nt_char_double_quote (star nt_string_char) in
++  let packer = fun s -> String(list_to_string s) in
++  pack parser packer;;
++
++(*
++------------ recursive sepxr production rules ------------
++*)
++(* ----- list & dotted list ----- *)
++let rec nt_pairs s =
++  let nt_opening_parenthesis = caten nt_char_open_parentheses nt_invisible in
++  let nt_sexprs_opt =
++    let nt_sexprs =
++      let nt_unpacked_sexprs =
++        let nt_inner_sexprs = plus nt_sexpr in
++        let nt_last_sexpr =
++          let nt_dotted_sexpr = make_delimited_on_left nt_dot nt_sexpr in
++          pack_option (maybe nt_dotted_sexpr) Nil in
++        caten nt_inner_sexprs nt_last_sexpr in
++      let pack_sexprs (sexprs_list, last_sexpr) =
++        List.fold_right (fun e acc -> Pair(e, acc)) sexprs_list last_sexpr in
++      pack nt_unpacked_sexprs pack_sexprs in
++    pack_option (maybe nt_sexprs) Nil in
++  let parser = make_paired nt_opening_parenthesis nt_char_close_parentheses nt_sexprs_opt in
++  parser s
++
++(* ----- quotes expressions ----- *)
++(* No need to explicitly enclose the quote in invisible stuff
++   because the sexpr handles it already *)
++and nt_quotes s =
++  let nt_quote_delimiters =
++    let quote_tokens_list = [
++      ("'", "quote");
++      ("`", "quasiquote");
++      (",@", "unquote-splicing");
++      (",", "unquote")
++    ] in
++    make_special_token_list quote_tokens_list word in
++  let nt_quoted_sexpr = caten nt_quote_delimiters nt_sexpr in
++  let quote_packer = (fun (name, sexpr) -> Pair(Symbol(name), Pair(sexpr, Nil))) in
++  let parser = pack nt_quoted_sexpr quote_packer in
++  parser s
++
++(* ----- invisible stuff handling (whitespaces and comments) ----- *)
++and nt_sexpr_comment s = (caten (word "#;") nt_sexpr) s
++and nt_invisible s =
++  let invisible_parser = disj_list [
++    (make_ignored (plus nt_whitespace)); (* to make it a clear distiction when the whitespaces parser
++                                            actually trimms whitspaces and when it does not.
++                                            this is crutial so that the disjunction may actually fail *)
++    (make_ignored nt_line_comment);
++    (make_ignored nt_sexpr_comment)
++  ] in
++  star invisible_parser s
++
++(* ----- sexpr ----- *)
++and nt_sexpr s =
++  let nt_sexpr_core =
++    let sexpr_parsers_list = [
++      nt_boolean; nt_char; nt_number; nt_string;
++      nt_symbol; nt_pairs; nt_quotes
++    ] in
++    disj_list sexpr_parsers_list in
++  let parser = make_paired_sym nt_invisible nt_sexpr_core in
++  parser s;;
++
++let nt_sexprs_input = make_paired nt_invisible nt_end_of_input (star nt_sexpr);;
++
++let read_sexprs string =
++  let s = string_to_list string in
++  let (sexprs, _) = nt_sexprs_input s in
++  sexprs;;
++
++end;; (* struct Reader *)
+diff --git a/readme.txt b/readme.txt
+index e69de29..228d216 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1,5 @@
++Boaz Rozovski 208386227
++Netanel Prat 313514309
++
++I (We) assert that the work we submitted is 100% our own. We have not received anypart from any other student in the class, nor have we give parts of it for use to others.Nor have we used code from other sources: Courses taught previously at this university,courses taught at other universities, various bits of code found on the Internet, etc.We realize that should our code be found to contain code from other sources, that aformal case shall be opened against us withva’adat mishma’at, in pursuit of disciplinaryaction.
++
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..0b3e756 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -1,6 +1,6 @@
+ #use "tag-parser.ml";;
+ 
+-type var = 
++type var =
+   | VarFree of string
+   | VarParam of string * int
+   | VarBound of string * int * int;;
+@@ -54,10 +54,10 @@ let rec expr'_eq e1 e2 =
+          (expr'_eq body1 body2)
+   | Applic'(e1, args1), Applic'(e2, args2)
+   | ApplicTP'(e1, args1), ApplicTP'(e2, args2) ->
+-	 (expr'_eq e1 e2) &&
+-	   (List.for_all2 expr'_eq args1 args2)
+-  | _ -> false;;	
+-                      
++    (expr'_eq e1 e2) &&
++    (List.for_all2 expr'_eq args1 args2)
++  | _ -> false;;
++
+ exception X_syntax_error;;
+ 
+ module type SEMANTICS = sig
+@@ -69,17 +69,468 @@ end;;
+ 
+ module Semantics : SEMANTICS = struct
+ 
+-let annotate_lexical_addresses e = raise X_not_yet_implemented;;
++let compute_bound_var_depth = fun depth var_depth_offset ->
++  depth - var_depth_offset - 1;;
++
++let annotate_lexical_addresses_helper = fun e ->
++  let vars_map = Hashtbl.create 16 in
++
++  let rec annotate_set = fun depth var_expr value_expr ->
++    let (var, value_expr') = annotate_assignment_expr' depth var_expr value_expr in
++    Set' (var, value_expr')
++  and annotate_def = fun depth var_expr value_expr ->
++    let (var, value_expr') = annotate_assignment_expr' depth var_expr value_expr in
++    Def' (var, value_expr')
++
++  and annotate_assignment_expr' = fun depth var_expr value_expr ->
++    let annotated_var_expr' = annotate_traversal depth var_expr in
++    match annotated_var_expr' with
++    | Var' var ->
++      let value_expr' = annotate_traversal depth value_expr in
++      (var, value_expr')
++    | _ -> raise X_syntax_error
++
++  and annotate_expr_list = fun depth exprs ->
++    List.map (annotate_traversal depth) exprs
++
++  and annotate_var = fun depth var_name ->
++    let last_var_def = Hashtbl.find_opt vars_map var_name in
++    match last_var_def with
++    | Some (var_depth, var_pos) ->
++      let depth_offset = compute_bound_var_depth depth var_depth in
++      if depth_offset = -1 then Var' (VarParam(var_name, var_pos))
++      else if depth >= 0 then Var' (VarBound(var_name, depth_offset, var_pos))
++      else raise (Failure "Lexical addressing: negative depth of less than -1")
++    | None -> Var' (VarFree var_name)
++
++  and annotate_lambda_simple = fun depth arg_names expr ->
++    let expr' =  annotate_lambda depth arg_names expr in
++    LambdaSimple' (arg_names, expr')
++  and annotate_lambda_opt = fun depth req_arg_names opt_arg_name expr ->
++    let arg_names = (req_arg_names @ [opt_arg_name]) in
++    let expr' =  annotate_lambda depth arg_names expr in
++    LambdaOpt' (req_arg_names, opt_arg_name, expr')
++
++  and annotate_lambda = fun depth arg_names expr ->
++    let next_depth = depth + 1 in
++    begin
++      add_args_to_map next_depth arg_names;
++      let expr' = annotate_traversal next_depth expr in
++      begin
++        remove_args_from_map arg_names;
++        expr'
++      end;
++    end;
++  and add_args_to_map = fun depth arg_names ->
++    List.iteri
++      (fun arg_pos arg_name -> Hashtbl.add vars_map arg_name (depth, arg_pos))
++      arg_names
++  and remove_args_from_map = fun arg_names ->
++    List.iter
++      (fun arg_name -> Hashtbl.remove vars_map arg_name)
++      arg_names
++
++  and annotate_traversal = fun depth expr ->
++    match expr with
++    | Const sexpr -> Const' sexpr
++    | Var var_name -> annotate_var depth var_name
++    | If (test, dit, dif) -> If' (
++        (annotate_traversal depth test),
++        (annotate_traversal depth dit),
++        (annotate_traversal depth dif)
++      )
++    | Seq exprs -> Seq' (annotate_expr_list depth exprs)
++    | Set (var_expr, value_expr) -> annotate_set depth var_expr value_expr
++    | Def (var_expr, value_expr) -> annotate_def depth var_expr value_expr
++    | Or exprs -> Or' (annotate_expr_list depth exprs)
++    | LambdaSimple (arg_names, body_expr) -> annotate_lambda_simple depth arg_names body_expr
++    | LambdaOpt (req_arg_names, opt_arg_name, body_expr) -> annotate_lambda_opt depth req_arg_names opt_arg_name body_expr
++    | Applic (operator_expr, operands_expr_list) -> Applic' (
++        (annotate_traversal depth operator_expr),
++        (annotate_expr_list depth operands_expr_list)
++      ) in
++
++  annotate_traversal 0 e;;
++
++let annotate_tail_calls_helper = fun e ->
++  let rec annotate_if = fun test dit dif is_in_tp ->
++    let annotate_test = annotate_traversal test false in
++    let annotate_dit = annotate_traversal dit is_in_tp in
++    let annotate_dif = annotate_traversal dif is_in_tp in
++    If'(annotate_test, annotate_dit, annotate_dif)
++
++  and annotate_list_not_in_tail_pos = fun expr'_list ->
++    List.map (fun expr' -> annotate_traversal expr' false) expr'_list
++
++  and annotate_list = fun expr'_list is_in_tp ->
++    let rev_list = List.rev expr'_list in
++    match rev_list with
++    | [] -> []
++    | expr' :: rest ->
++      let annotate_rev_list = annotate_list_not_in_tail_pos rest in
++      let annotate_last = annotate_traversal expr' is_in_tp in
++      let annotate_list = List.rev (annotate_last :: annotate_rev_list) in
++      annotate_list
++
++  and annotate_assignment_expr' = fun value_expr' ->
++    annotate_traversal value_expr' false
++
++  and annotate_lambda = fun body_expr' ->
++    annotate_traversal body_expr' true
++  and annotate_lambda_simple = fun arg_names body_expr' ->
++    let annotated_body_expr' = annotate_lambda body_expr' in
++    LambdaSimple' (arg_names, annotated_body_expr')
++  and annotate_lambda_opt = fun req_arg_names opt_arg_name body_expr' ->
++    let annotated_body_expr' = annotate_lambda body_expr' in
++    LambdaOpt' (req_arg_names, opt_arg_name, annotated_body_expr')
++
++  and annotate_applic = fun operator_expr' operands_expr'_list is_in_tp ->
++    let annotate_expr'_operator = annotate_traversal operator_expr' is_in_tp in
++    let annotate_exprs'_operands = annotate_list_not_in_tail_pos operands_expr'_list in
++    if is_in_tp
++    then ApplicTP' (annotate_expr'_operator, annotate_exprs'_operands)
++    else Applic' (annotate_expr'_operator, annotate_exprs'_operands)
++
++  and annotate_traversal = fun expr' is_in_tp ->
++  match expr' with
++  | Const' _ -> expr'
++  | Var' _ -> expr'
++  | Box' _ -> expr'
++  | BoxGet' _ -> expr'
++  | BoxSet' _ -> expr'
++  | If' (test, dit, dif) -> annotate_if test dit dif is_in_tp
++  | Seq' expr'_list -> Seq' (annotate_list expr'_list is_in_tp)
++  | Set' (var, value_expr') -> Set' (var, (annotate_assignment_expr' value_expr'))
++  | Def' (var, value_expr') -> Def' (var, (annotate_assignment_expr' value_expr'))
++  | Or' expr'_list -> Or' (annotate_list expr'_list is_in_tp)
++  | LambdaSimple' (arg_names, body_expr') -> annotate_lambda_simple arg_names body_expr'
++  | LambdaOpt' (req_arg_names, opt_arg_name, body_expr') -> annotate_lambda_opt req_arg_names opt_arg_name body_expr'
++  | Applic' (operator_expr', operands_expr'_list) -> annotate_applic operator_expr' operands_expr'_list is_in_tp
++
++  (* impossible case, were annotate right now,
++     so if we got an ApplicTP', it's probably a bug *)
++  | ApplicTP' (expr'_operator, exprs'_operands) -> raise X_syntax_error in
++
++  annotate_traversal e false;;
++
++let annotate_boxes_helper = fun e ->
++  let box_arguments = fun factory annotation_args body_expr' ->
++    let annotate_box_var_pos = fun factory box_factory depth args_pos_list var_pos var ->
++      if depth = 1 then (* the var references a parameter lambda which needs boxing annotation (calling lambda) *)
++        let annotation_arg_opt = List.find_opt
++            (fun arg_pos -> arg_pos = var_pos)
++            args_pos_list in
++        match annotation_arg_opt with
++        | Some _ -> box_factory var
++        | None -> factory var
++      else if depth > 1 then factory var (* the var references a parameter of a child lambda of the calling lambda *)
++      else factory var (* the var references a parameter of a parent lambda of the calling lambda *) in
++    let annotate_box_var = fun factory box_factory depth args_pos_list var ->
++      match var with
++      | VarParam (_, var_pos) -> annotate_box_var_pos factory box_factory depth args_pos_list var_pos var
++      | VarBound (_, depth_offset, var_pos) ->
++        let dest_depth = compute_bound_var_depth depth depth_offset in
++        annotate_box_var_pos factory box_factory dest_depth args_pos_list var_pos var
++      | VarFree _ -> factory var in
++
++    let rec annotate_set = fun depth args_pos_list var value_expr' ->
++      let annotated_value_expr' = annotate_boxes_traversal depth args_pos_list value_expr' in
++      annotate_box_var
++        (fun var -> Set' (var, annotated_value_expr'))
++        (fun var -> BoxSet' (var, annotated_value_expr'))
++        depth args_pos_list var
++
++    and annotate_boxes_list = fun depth args_pos_list expr'_list ->
++      List.map (annotate_boxes_traversal depth args_pos_list) expr'_list
++
++    and annotate_applic = fun factory depth args_pos_list operator_expr' operands_expr'_list ->
++      let annotated_operator_expr' = annotate_boxes_traversal depth args_pos_list operator_expr' in
++      let annotated_operands_expr' = annotate_boxes_list depth args_pos_list operands_expr'_list in
++      factory annotated_operator_expr' annotated_operands_expr'
++
++    and annotate_lambda = fun depth args_pos_list body_expr' ->
++      annotate_boxes_traversal (depth + 1) args_pos_list body_expr'
++
++    and annotate_boxes_traversal = fun depth args_pos_list expr' ->
++      match expr' with
++      | Const' _ -> expr'
++
++      | Var' var ->
++        annotate_box_var
++          (fun var -> Var' var)
++          (fun var -> BoxGet' var)
++          depth args_pos_list var
++
++      | If' (test, dit, dif) -> If' (
++          annotate_boxes_traversal depth args_pos_list test,
++          annotate_boxes_traversal depth args_pos_list dit,
++          annotate_boxes_traversal depth args_pos_list dif
++        )
++
++      | Seq' expr'_list -> Seq' (annotate_boxes_list depth args_pos_list expr'_list)
++      | Set' (var, value_expr') -> annotate_set depth args_pos_list var value_expr'
++      | Def' (var, value_expr') -> Def' (var, (annotate_boxes_traversal depth args_pos_list value_expr'))
++      | Or' expr'_list -> Or' (annotate_boxes_list depth args_pos_list expr'_list)
++      | LambdaSimple' (arg_names, body_expr') -> LambdaSimple' (arg_names, (annotate_lambda depth args_pos_list body_expr'))
++      | LambdaOpt' (req_arg_names, opt_arg_name, body_expr') -> LambdaOpt' (req_arg_names, opt_arg_name, (annotate_lambda depth args_pos_list body_expr'))
++
++      | Applic' (operator_expr', operands_expr'_list) ->
++        annotate_applic
++          (fun annotated_operator_expr' annotated_operands_expr' ->
++            Applic' (annotated_operator_expr', annotated_operands_expr'))
++          depth
++          args_pos_list
++          operator_expr'
++          operands_expr'_list
++
++      | ApplicTP' (operator_expr', operands_expr'_list) ->
++        annotate_applic
++          (fun annotated_operator_expr' annotated_operands_expr' ->
++            ApplicTP' (annotated_operator_expr', annotated_operands_expr'))
++          depth
++          args_pos_list
++          operator_expr'
++          operands_expr'_list
+ 
+-let annotate_tail_calls e = raise X_not_yet_implemented;;
++      | Box' _ -> expr'
++      | BoxGet' _ -> expr'
++      | BoxSet' _ -> expr' in
+ 
+-let box_set e = raise X_not_yet_implemented;;
++    let transform_body = fun () ->
++      let annotated_body_expr' =
++        if annotation_args = [] then body_expr'
++        else
++          let set_boxes_expr'_list = List.map
++            (fun (arg_name, pos) ->
++              let var_param = VarParam (arg_name, pos) in
++              Set' (var_param, Box' var_param))
++            annotation_args in
++          let body_expr'_list =
++            let args_pos_list = List.map (fun (_, pos) -> pos) annotation_args in
++            let annotated_body_expr' = annotate_boxes_traversal 1 args_pos_list body_expr' in
++            match annotated_body_expr' with
++            | Seq' expr'_list -> expr'_list
++            | _ -> [annotated_body_expr'] in
++          Seq' (set_boxes_expr'_list @ body_expr'_list) in
++      factory annotated_body_expr' in
++
++    transform_body () in
++
++  let annotate_boxes_and_find_var_accesses = fun expr' ->
++    let get_var_access_var = fun depth var read_write ->
++      match var with
++      | VarParam (_, pos) -> [(depth, pos, None, read_write)]
++      | VarBound (_, depth_offset, pos) ->
++        let dest_depth = compute_bound_var_depth depth depth_offset in
++        [(dest_depth, pos, None, read_write)]
++      | VarFree _ -> [] in
++
++    let rec do_set = fun depth var value_expr' ->
++      let var_var_access = get_var_access_var depth var false in
++      let (
++        annotated_value_expr',
++        value_expr'_var_accesses
++      ) = do_traversal depth value_expr' in
++      let var_accesses = package_ordered_var_accesses depth [
++        value_expr'_var_accesses;
++        var_var_access
++      ] in
++      (Set' (var, annotated_value_expr'), var_accesses)
++
++    and do_def = fun depth var value_expr' ->
++      let (
++        annotated_value_expr',
++        var_acceses
++      ) = do_traversal depth value_expr' in
++      (Def' (var, annotated_value_expr'), var_acceses)
++
++    and do_if = fun depth test dit dif ->
++      let (annotated_test, test_var_accesses) = do_traversal depth test in
++      let (annotated_dit, dit_var_accesses) = do_traversal depth dit in
++      let (annotated_dif, dif_var_accesses) = do_traversal depth dif in
++      let annoated_if = If' (
++        annotated_test,
++        annotated_dit,
++        annotated_dif
++      ) in
++      let var_accesses = package_ordered_var_accesses depth [
++        test_var_accesses;
++        dit_var_accesses @ dif_var_accesses
++      ] in
++      (annoated_if, var_accesses)
++
++    and do_list = fun depth expr'_list ->
++      (* expr' list -> (expr', var_access list) list *)
++      let annotated_and_var_accesses_list = List.map (do_traversal depth) expr'_list in
++      List.split annotated_and_var_accesses_list
++
++    and do_unordered_list = fun depth expr'_list ->
++      let (annoated_expr'_list, var_acceses_list_list) = do_list depth expr'_list in
++      let all_expr'_var_acceses_list = List.flatten var_acceses_list_list in
++      (annoated_expr'_list, all_expr'_var_acceses_list)
++
++    and package_ordered_var_accesses = fun depth var_accesses_list_list ->
++      (* TODO actually implemented this when we understand what the requirements are *)
++      List.flatten var_accesses_list_list
++
++    and do_ordered_list = fun depth expr'_list ->
++      (* TODO actually implemented this when we understand what the requirements are *)
++      let (annoated_expr'_list, var_acceses_list_list) = do_list depth expr'_list in
++      let ordered_var_accesses_list_list = package_ordered_var_accesses
++        depth
++        var_acceses_list_list in
++      (annoated_expr'_list, ordered_var_accesses_list_list)
++
++    and do_seq = fun depth expr'_list ->
++      let (
++        annoated_expr'_list,
++        ordered_var_accesses_list_list
++      ) = do_ordered_list depth expr'_list in
++      (Seq' annoated_expr'_list, ordered_var_accesses_list_list)
++
++    and do_or = fun depth expr'_list ->
++      let (
++        annoated_expr'_list,
++        ordered_var_accesses_list_list
++      ) = do_ordered_list depth expr'_list in
++      (Or' annoated_expr'_list, ordered_var_accesses_list_list)
++
++    and do_applic = fun depth operator_expr' operands_expr'_list ->
++      let (
++        annotated_operator_expr',
++        annotated_operand_expr'_list,
++        var_accesses
++      ) = do_applic_core depth operator_expr' operands_expr'_list in
++      (Applic' (annotated_operator_expr', annotated_operand_expr'_list), var_accesses)
++    and do_applicTP = fun depth operator_expr' operands_expr'_list ->
++      let (
++        annotated_operator_expr',
++        annotated_operand_expr'_list,
++        var_accesses
++      ) = do_applic_core depth operator_expr' operands_expr'_list in
++      (ApplicTP' (annotated_operator_expr', annotated_operand_expr'_list), var_accesses)
++
++    and do_applic_core = fun depth operator_expr' operands_expr'_list ->
++      let (
++        annotated_operator_expr',
++        operator_var_accesses
++      ) = do_traversal depth operator_expr' in
++      let (
++        annotated_operand_expr'_list,
++        operand_var_accesses
++      ) = do_unordered_list depth operands_expr'_list in (
++        annotated_operator_expr',
++        annotated_operand_expr'_list,
++        operator_var_accesses @ operand_var_accesses
++      )
++
++    and do_lambda = fun factory depth arg_names body_expr' ->
++      (* 1. get all the var accesses in the body
++         2. find the var accesses for this lambda
++         3. filter out vars according to rules 1 and 2
++         4. annotated boxes (i.e. annotate all accesses as box get/set and add a set box at the beginning)
++         5. filter out all vars which are parameters of this lambda
++         6. map the rest of the accesses to replace the highest lambda to be this lambda
++         7. return the var accesses list *)
++      let depth = depth + 1 in
++      let (
++        annotated_body_expr',
++        body_var_accesses
++      ) = do_traversal depth body_expr' in
++
++      let (var_accesses, parent_lambdas_var_accesses) = List.partition
++        (fun (dest_depth, _, _, _) -> dest_depth = depth)
++        body_var_accesses in
++
++      let var_accesses = List.filter
++        (fun (_, _, highest_lambda_opt, read_write) ->
++          List.exists
++            (fun (_, _, other_highest_lambda_opt, other_read_write) ->
++              read_write <> other_read_write &&
++              match highest_lambda_opt, other_highest_lambda_opt with
++              | None, None -> false
++              | Some highest_lambda, Some other_highest_lambda -> (
++                match highest_lambda, other_highest_lambda with
++                | LambdaSimple' _, LambdaSimple' _ -> highest_lambda != other_highest_lambda
++                | LambdaOpt' _, LambdaOpt' _ -> highest_lambda != other_highest_lambda
++                | _ -> true
++              )
++              | _ -> true)
++          var_accesses)
++        var_accesses in
++
++      let annotated_body_expr' =
++        let args_pos_list = List.map (fun (_, pos, _, _) -> pos) var_accesses in
++        let unique_args_pos_list = List.sort_uniq compare args_pos_list in
++        let annotation_args = List.map
++          (fun pos ->
++            let arg_name = List.nth arg_names pos in
++            (arg_name, pos))
++          unique_args_pos_list in
++        box_arguments factory annotation_args annotated_body_expr' in
++
++      let parent_lambdas_var_accesses = List.map
++        (fun (dest_depth, pos, _, read_write) ->
++          (dest_depth, pos, Some annotated_body_expr', read_write))
++        parent_lambdas_var_accesses in
++
++      (annotated_body_expr', parent_lambdas_var_accesses)
++
++    and do_lambda_simple = fun depth arg_names body_expr' ->
++      do_lambda
++        (fun annotated_body_expr' -> LambdaSimple' (arg_names, annotated_body_expr'))
++        depth
++        arg_names
++        body_expr'
++
++    and do_lambda_opt = fun depth req_arg_names opt_arg_name body_expr' ->
++      do_lambda
++        (fun annotated_body_expr' -> LambdaOpt' (req_arg_names, opt_arg_name, annotated_body_expr'))
++        depth
++        (req_arg_names @ [opt_arg_name])
++        body_expr'
++
++    (* data structure for the return value of the recursio:
++      (annotated_expr', [(depth, pos, highest_lambda option, read/write)])
++      read - true
++      write - false
++    *)
++    and do_traversal = fun depth expr' ->
++      match expr' with
++      | Const' _ -> (expr', [])
++      | Var' var -> (expr', get_var_access_var depth var true)
++      | If' (test, dit, dif) -> do_if depth test dit dif
++      | Seq' expr'_list -> do_seq depth expr'_list
++      | Set' (var, value_expr') -> do_set depth var value_expr'
++      | Def' (var, value_expr') -> do_def depth var value_expr'
++      | Or' expr'_list -> do_or depth expr'_list
++      | Applic' (operator_expr', operands_expr'_list) -> do_applic depth operator_expr' operands_expr'_list
++      | ApplicTP' (operator_expr', operands_expr'_list) -> do_applicTP depth operator_expr' operands_expr'_list
++
++      (* returns with possibly annotated body *)
++      | LambdaSimple' (arg_names, body_expr') -> do_lambda_simple depth arg_names body_expr'
++      | LambdaOpt' (req_arg_names, opt_arg_name, body_expr') -> do_lambda_opt depth req_arg_names opt_arg_name body_expr'
++
++      (* impossible case, were annotate right now,
++         so if we got a box, it's probably a bug *)
++      | Box' _ -> raise X_syntax_error
++      | BoxGet' _ -> raise X_syntax_error
++      | BoxSet' _ -> raise X_syntax_error in
++
++    do_traversal 0 expr' in
++
++  let (annotated_expr', _) = annotate_boxes_and_find_var_accesses e in
++  annotated_expr'
++
++let annotate_lexical_addresses e = annotate_lexical_addresses_helper e;;
++
++let annotate_tail_calls e = annotate_tail_calls_helper e;;
++
++let box_set e = annotate_boxes_helper e;;
+ 
+ let run_semantics expr =
+   box_set
+     (annotate_tail_calls
+        (annotate_lexical_addresses expr));;
+-  
+-end;; (* struct Semantics *)
+-
+ 
++end;; (* struct Semantics *)
+\ No newline at end of file
+diff --git a/tag-parser.ml b/tag-parser.ml
+index 138249e..8a4af8c 100644
+--- a/tag-parser.ml
++++ b/tag-parser.ml
+@@ -40,8 +40,8 @@ let rec expr_eq e1 e2 =
+      (expr_eq e1 e2) &&
+        (List.for_all2 expr_eq args1 args2)
+   | _ -> false;;
+-	
+-                       
++
++
+ exception X_syntax_error;;
+ 
+ module type TAG_PARSER = sig
+@@ -54,12 +54,522 @@ let reserved_word_list =
+   ["and"; "begin"; "cond"; "define"; "else";
+    "if"; "lambda"; "let"; "let*"; "letrec"; "or";
+    "quasiquote"; "quote"; "set!"; "pset!"; "unquote";
+-   "unquote-splicing"];;  
++   "unquote-splicing"];;
+ 
+ (* work on the tag parser starts here *)
++(*
++--------------------------------------------------------------------------------
++----------------------------------- Utilities ----------------------------------
++--------------------------------------------------------------------------------
++*)
++let is_reserved_word = fun symbol -> List.mem symbol reserved_word_list;;
+ 
+-let tag_parse_expressions sexpr = raise X_not_yet_implemented;;
++(*
++--------------------------------------------------------------------------------
++------------------------ S-Expr lists and pairs related ------------------------
++------------- and convertion to OCaml list and pairs and vise versa ------------
++--------------------------------------------------------------------------------
++*)
++let sexpr_pair_from_ocaml_list_with_remainder = fun (list, remainder) ->
++  List.fold_right
++    (fun item pairs -> Pair(item, pairs))
++    list
++    remainder;;
+ 
+-  
+-end;; (* struct Tag_Parser *)
++let sexpr_proper_list_from_ocaml_list = fun list ->
++  sexpr_pair_from_ocaml_list_with_remainder (list, Nil);;
++
++(*
++  Converts a S-Expression pair to an OCaml pair (tuple with 2 items)
++  of a list of all S-Expressions in the pairs (expect the last which is the cdr of the most inner pair)
++  and the last S-Expresssion (remainder)
++  Edge case: Nil. The function returns an empty list and Nil as the remainder
++*)
++let rec ocaml_list_with_remainder_from_sexpr_pair = function
++  | Nil -> ([], Nil)
++  | Pair(car, cdr) ->
++    (match cdr with
++    | Pair _ ->
++      let (rest, last) = ocaml_list_with_remainder_from_sexpr_pair cdr in
++      (car :: rest, last)
++    | _ -> ([car], cdr))
++  | _ -> raise X_syntax_error;;
++
++(*
++  Converts a S-Expression proper list to an OCaml list.
++
++  Exceptions:
++    X_syntax_error: When the given S-Expression is not a proper list
++*)
++let rec ocaml_list_from_sexpr_proper_list = fun sexpr_list ->
++  match (ocaml_list_with_remainder_from_sexpr_pair sexpr_list) with
++  | (list, Nil) -> list
++  | _ -> raise X_syntax_error;;
++
++let ocaml_pairs_list_from_sexpr_bindings = fun sexpr_list ->
++  let ocaml_list_of_sexpr_paris = ocaml_list_from_sexpr_proper_list sexpr_list in
++  List.map
++    (fun pair ->
++      match pair with
++      | Pair(car, Pair(cdr, Nil)) -> (car, cdr)
++      | _  -> raise X_syntax_error)
++    ocaml_list_of_sexpr_paris;;
++
++let ocaml_lists_pair_from_sexpr_bindings = fun sexpr_list ->
++  let ocaml_paris_list = ocaml_pairs_list_from_sexpr_bindings sexpr_list in
++  List.split ocaml_paris_list;;
++
++(*
++--------------------------------------------------------------------------------
++----------------------- S-Expr constructors and functions ----------------------
++--------------------------------------------------------------------------------
++*)
++let extract_symbol_string = function
++  | Symbol(symbol) -> symbol
++  | _ -> raise X_syntax_error;;
++
++let make_list_sexpr_from = fun exp ->
++  Pair(exp, Nil)
++
++let make_var_sexpr = fun var_name ->
++  Symbol(var_name);;
++
++let make_app_sexpr = fun operator operands ->
++  Pair(operator, operands);;
++let make_operands_sexpr = fun operands ->
++  sexpr_proper_list_from_ocaml_list operands;;
++
++let make_lambda_sexpr = fun args body ->
++  Pair(Symbol "lambda", Pair(args, body));;
++let make_body_sexpr = fun exps ->
++  sexpr_proper_list_from_ocaml_list exps;;
++let make_args_sexpr = fun arg_names ->
++  sexpr_proper_list_from_ocaml_list arg_names;;
++let make_delayed_sexpr = fun exp ->
++  make_lambda_sexpr Nil (make_body_sexpr [exp]);;
++
++let make_begin_sexpr = fun exps ->
++  Pair(Symbol "begin", exps);;
++
++let make_set_sexpr_raw = fun var exp ->
++  Pair(Symbol "set!", Pair(var, Pair(exp, Nil)));;
++let make_set_sexpr = fun var_name exp ->
++  make_set_sexpr_raw (make_var_sexpr var_name) exp;;
++
++let make_if_sexpr_raw = fun test dit dif ->
++  Pair(Symbol "if", Pair(test, Pair(dit, dif)));;
++let make_if_sexpr = fun test dit dif ->
++  Pair(Symbol "if", Pair(test, Pair(dit, Pair(dif, Nil))));;
++
++let make_define_sexpr = fun var_name exp ->
++  Pair(Symbol "define", Pair(make_var_sexpr var_name, Pair(exp, Nil)));;
++
++let make_binding_sexpr_raw = fun var_sexpr value_exp ->
++  sexpr_proper_list_from_ocaml_list [var_sexpr; value_exp];;
++let make_binding_sexpr = fun var_name value_exp ->
++  make_binding_sexpr_raw (make_var_sexpr var_name) value_exp;;
++let make_delayed_binding_sexpr = fun var_name value_exp ->
++  make_binding_sexpr var_name (make_delayed_sexpr value_exp);;
++let make_bindings_sexpr = fun bindings_list ->
++  sexpr_proper_list_from_ocaml_list bindings_list;;
++let make_named_let_sexpr = fun name bindings body ->
++  Pair(Symbol name, Pair(bindings, body));;
++let make_let_sexpr = fun bindings body ->
++  make_named_let_sexpr "let" bindings body;;
++
++let make_quote_sexpr = fun sexpr ->
++  Pair(Symbol "quote", Pair(sexpr, Nil));;
++
++(*
++--------------------------------------------------------------------------------
++-------------------------------- Macro expanders -------------------------------
++--------------------------------------------------------------------------------
++*)
++let expand_and_macro = fun exps ->
++  match exps with
++  | Nil -> Bool(true)
++  | Pair(exp, Nil) -> exp
++  | Pair(car, cdr) -> make_if_sexpr car (Pair(Symbol "and", cdr)) (Bool false)
++  | _ -> raise X_syntax_error;;
++
++let expand_mit_define_macro = fun var_name args body ->
++  make_define_sexpr var_name (make_lambda_sexpr args body);;
++
++let expend_pset_macro = fun bindings ->
++  match bindings with
++  (* no bindings *)
++  | Nil -> make_begin_sexpr Nil
++
++  (* exactly 1 binding, equivalent to a set! *)
++  | Pair(Pair(var_sexpr, Pair(value_exp, Nil)), Nil) -> make_set_sexpr_raw var_sexpr value_exp
++
++  (* at least 2 bindings *)
++  | Pair(Pair(var_sexpr, Pair(value_exp, Nil)), rest_bindings) ->
++    let var_name = extract_symbol_string var_sexpr in
++    let var_prev_value_var_name = var_name ^ "-prev-value" in
++    let var_new_value_var_name = var_name ^ "-new-value" in
++    let rest_pset_var_name = "pset-rest-" ^ var_name in
++
++    let bindings =
++      let var_prev_value_binding = make_binding_sexpr var_prev_value_var_name var_sexpr in
++      let var_new_value_binding = make_binding_sexpr var_new_value_var_name value_exp in
++      let rest_pset_delayed_binding =
++        let rest_pset_lambda =
++          let args = make_args_sexpr [var_sexpr] in
++          let body =
++            let rest_pset_exp = Pair(Symbol "pset!", rest_bindings) in
++          make_body_sexpr [rest_pset_exp] in
++        make_lambda_sexpr args body in
++      make_binding_sexpr rest_pset_var_name rest_pset_lambda in
++    make_bindings_sexpr [
++      var_prev_value_binding;
++      var_new_value_binding;
++      rest_pset_delayed_binding
++    ] in
++
++    let body =
++      let assign_var_set_exp = make_set_sexpr_raw var_sexpr (make_var_sexpr var_new_value_var_name) in
++      let apply_rest_pset =
++        let rest_pset_var_sexpr = make_var_sexpr rest_pset_var_name in
++        let var_prev_value_operand = make_operands_sexpr [make_var_sexpr var_prev_value_var_name] in
++        make_app_sexpr rest_pset_var_sexpr var_prev_value_operand in
++      make_body_sexpr [
++        assign_var_set_exp;
++        apply_rest_pset
++      ] in
++
++    make_let_sexpr bindings body
++
++  (* invalid syntax, covered for completeness and for clean compile without warnings *)
++  | _ -> raise X_syntax_error;;
++
++let expand_let_macro = fun bindings body ->
++  let (var_sexprs_list, value_exps_list) = ocaml_lists_pair_from_sexpr_bindings bindings in
++  let var_sexprs = make_args_sexpr var_sexprs_list in
++  let value_exps = make_body_sexpr value_exps_list in
++  let lambda = make_lambda_sexpr var_sexprs body in
++  make_app_sexpr lambda value_exps;;
++
++let expand_let_star_macro = fun bindings body ->
++  match bindings with
++  (* 0 or 1 variable bindings *)
++  | (Nil | Pair(_, Nil)) -> make_let_sexpr bindings body
++
++  (* at least 2 bindings *)
++  | Pair(first_binding, rest_bindings) ->
++    let bindings = make_bindings_sexpr [first_binding] in
++    let innet_let_star = make_named_let_sexpr "let*" rest_bindings body in
++    let body = make_body_sexpr [innet_let_star] in
++    make_let_sexpr bindings body
++
++  | _ -> raise X_syntax_error;;
++
++let expand_letrec_macro = fun bindings body ->
++  let (var_sexprs, value_exps) = ocaml_lists_pair_from_sexpr_bindings bindings in
++
++  let bindings =
++    let bindings_list = List.map
++      (fun var_sexpr -> make_binding_sexpr_raw var_sexpr (make_quote_sexpr (Symbol "whatever")))
++      var_sexprs in
++    make_bindings_sexpr bindings_list in
++
++  let body = (
++    let assignments_exps = List.map2
++      (fun var_sexpr value_exp -> make_set_sexpr_raw var_sexpr value_exp)
++      var_sexprs
++      value_exps in
++    sexpr_pair_from_ocaml_list_with_remainder (assignments_exps, body)
++  ) in
++  make_let_sexpr bindings body;;
++
++let expand_cond_macro = fun ribs ->
++  let (ribs, _) = (
++    (* filter out ribs after the else rib *)
++
++    let ribs = ocaml_list_from_sexpr_proper_list ribs in
++    List.fold_left
++      (fun (ribs_acc, after_else_rib) rib ->
++        match rib with
++        | Pair(Symbol "else", _) -> (ribs_acc @ [rib], true)
++        | _ ->
++          let ribs_acc =
++            if after_else_rib then ribs_acc
++            else ribs_acc @ [rib] in
++          (ribs_acc, false))
++      ([], false)
++      ribs
++  ) in
++
++  let (expansion, _) =
++    let expand_rib_else = fun body -> make_begin_sexpr body in
++
++    let expand_rib_normal = fun test body rest_ribs_expansion is_last_rib ->
++      let dit = make_begin_sexpr body in
++      let dif =
++        if is_last_rib then Nil
++        else make_list_sexpr_from rest_ribs_expansion in
++      make_if_sexpr_raw test dit dif in
++
++    let expand_rib_arrow = fun exp exp_f rest_ribs_expansion is_last_rib ->
++      let bindings =
++        let test_binding = make_binding_sexpr "value" exp in
++        let f_binding = make_delayed_binding_sexpr "f" exp_f in
++        let bindings_list =
++          let bindings_list = [test_binding; f_binding] in
++          if is_last_rib then bindings_list
++          else
++            let rest_binding = make_delayed_binding_sexpr "rest" rest_ribs_expansion in
++            bindings_list @ [rest_binding] in
++        make_bindings_sexpr bindings_list in
++
++      let body =
++        let test = make_var_sexpr "value" in
++        let dit = make_app_sexpr
++          (make_app_sexpr (make_var_sexpr "f") Nil)
++          (make_list_sexpr_from (make_var_sexpr "value")) in
++        let dif =
++          if is_last_rib then Nil
++          else make_list_sexpr_from (make_app_sexpr (make_var_sexpr "rest") Nil) in
++        let inner_if = make_if_sexpr_raw test dit dif in
++        make_body_sexpr [inner_if] in
++      make_let_sexpr bindings body in
++
++    List.fold_right
++      (fun rib (rest_ribs_expansion, is_last_rib) ->
++        match rib with
++        | Pair(Symbol("else"), body) -> (expand_rib_else body, false)
+ 
++        | Pair(exp, Pair(Symbol("=>"), Pair(exp_f, Nil))) ->
++          (expand_rib_arrow exp exp_f rest_ribs_expansion is_last_rib, false)
++
++        | Pair(test, body) ->
++          (expand_rib_normal test body rest_ribs_expansion is_last_rib, false)
++
++        | _ -> raise X_syntax_error)
++      ribs
++      (Nil, true) in
++  expansion;;
++
++let rec expand_quasiquote_macro = fun sexpr ->
++  match sexpr with
++  | (String(_)
++     | Bool(_)
++     | Number(_)
++     | Char(_)) -> sexpr
++
++  | Pair(Symbol("unquote"), Pair(sexpr, Nil)) -> sexpr
++  | Pair(Symbol("unquote-splicing"), Pair(_, Nil)) -> make_quote_sexpr sexpr
++  | (Nil | Symbol(_)) -> make_quote_sexpr sexpr
++
++  | Pair(Pair(Symbol("unquote-splicing"), Pair(sexpr, Nil)), cdr) ->
++    sexpr_proper_list_from_ocaml_list [
++      Symbol "append";
++      sexpr;
++      expand_quasiquote_macro cdr
++    ]
++
++  | Pair(car, cdr) ->
++    sexpr_proper_list_from_ocaml_list [
++      Symbol "cons";
++      expand_quasiquote_macro car;
++      expand_quasiquote_macro cdr
++    ];;
++
++(*
++--------------------------------------------------------------------------------
++---------------------- Macro expansions pattern matching  ----------------------
++--------------------------------------------------------------------------------
++*)
++let expand_macro_shallow = fun sexpr ->
++  match sexpr with
++  | Pair(Symbol("and"), exps) -> expand_and_macro exps
++  | Pair(Symbol("define"), Pair(Pair(Symbol(var_name), args), body)) ->
++    expand_mit_define_macro var_name args body
++
++  | Pair(Symbol("let"), Pair(bindings, body)) -> expand_let_macro bindings body
++  | Pair(Symbol("let*"), Pair(bindings, body)) -> expand_let_star_macro bindings body
++  | Pair(Symbol("letrec"), Pair(bindings, body)) -> expand_letrec_macro bindings body
++  | Pair(Symbol("cond"), ribs) -> expand_cond_macro ribs
++  | Pair(Symbol("quasiquote"), Pair(sexpr, Nil)) -> expand_quasiquote_macro sexpr
++  | Pair(Symbol("pset!"), bindings) -> expend_pset_macro bindings
++  | _ -> sexpr
++
++let rec expand_macro = fun sexpr ->
++  let expanded_sexpr = expand_macro_shallow sexpr in
++    if sexpr != expanded_sexpr then expand_macro expanded_sexpr
++    else sexpr
++
++(*
++--------------------------------------------------------------------------------
++------------------------------ Core forms parsers ------------------------------
++--------------------------------------------------------------------------------
++*)
++let rec parse_const = fun sexpr -> Const(Sexpr sexpr)
++
++and parse_var_form = fun symbol ->
++  if not (is_reserved_word symbol)
++  then Var symbol
++  else raise X_syntax_error
++
++and extract_var_name = fun symbol_sexpr ->
++  let symbol_string = extract_symbol_string symbol_sexpr in
++  let var_expr = parse_var_form symbol_string in
++  match var_expr with
++  | Var var_name -> var_name
++
++  (* cannot reach this case, here for completeness and in order to compile without warnings *)
++  | _ -> raise X_syntax_error
++
++and parse_if_form = fun test dit dif ->
++  let test = tag_parse test in
++  let dit = tag_parse dit in
++  let dif =
++    (match dif with
++      | Nil -> Const Void
++      | Pair(dif, Nil) -> tag_parse dif
++      | _ -> raise X_syntax_error) in
++  If(test, dit, dif)
++
++and parse_def_form = fun var_name exp ->
++  Def((parse_var_form var_name), (tag_parse exp))
++
++and parse_set_form = fun var_name exp ->
++  Set((parse_var_form var_name), (tag_parse exp))
++
++and parse_or_form = fun exps ->
++  let exprs = parse_exps_list exps in
++  match exprs with
++  | [] -> parse_const (Bool false)
++  | expr :: [] -> expr
++  | exprs -> Or exprs
++
++and parse_appic_form = fun operator operands ->
++  let operator_expr = tag_parse operator in
++  let operands_exprs = parse_exps_list operands in
++    Applic(operator_expr, operands_exprs)
++
++and parse_begin_form = fun exps -> parse_sequence exps
++
++and parse_lambda_form = fun args body_exps ->
++  let body = parse_sequence body_exps in
++
++  (* check for non empty body *)
++  if body = Const Void then raise X_syntax_error (* empty body *)
++  else (
++    match args with
++
++    (* an empty list (Simple) *)
++    (* (lambda () ...) *)
++    | Nil -> LambdaSimple([], body)
++
++    (* a symbol (Opt - Variadic) *)
++    (* (lambda c ...) *)
++    | Symbol(variadic_arg) -> LambdaOpt([], variadic_arg, body)
++
++    | Pair _ -> (
++      let extract_arg_names = fun args -> List.map extract_var_name args in
++
++      let has_duplicates = fun list ->
++        let no_duplicates_list = List.sort_uniq String.compare list in
++        let lengths_cmp_result = List.compare_lengths list no_duplicates_list in
++        lengths_cmp_result <> 0 in
++
++      (* start reading from here *)
++      let (args, arg_remainder) = ocaml_list_with_remainder_from_sexpr_pair args in
++      let args = extract_arg_names args in
++      if (has_duplicates args) then raise X_syntax_error
++      else match arg_remainder with
++
++        (* an empty list *)
++        (* args are a non-empty proper list (Simple) *)
++        (* (lambda (a b c) ...) *)
++        | Nil -> LambdaSimple(args, body)
++
++        (* a symbol *)
++        (* args are an improper list (Opt) *)
++        (* (lambda (a b . c) ...) *)
++        | Symbol(optional_arg) ->
++          if (List.mem optional_arg args) then raise X_syntax_error
++          else LambdaOpt(args, optional_arg, body)
++        | _ -> raise X_syntax_error
++      )
++    | _ -> raise X_syntax_error
++  )
++
++and parse_exps_list = fun exps ->
++  let sexprs_list = ocaml_list_from_sexpr_proper_list exps in
++  List.fold_right
++    (fun sexpr acc -> (tag_parse sexpr) :: acc)
++    sexprs_list
++    []
++
++and parse_sequence = fun exps ->
++  let exps = ocaml_list_from_sexpr_proper_list exps in
++  let f_build_expr_list =
++    (fun exp acc ->
++      let expr = tag_parse exp in
++      match expr with
++      | Seq expr_list -> expr_list @ acc
++      | expr -> expr :: acc) in
++  let exprs = List.fold_right
++      f_build_expr_list
++      exps
++      [] in
++    match exprs with
++    | [] -> Const Void
++    | expr :: [] -> expr
++    | exprs -> Seq exprs
++
++(*
++--------------------------------------------------------------------------------
++-------------------------- Core forms pattern matching -------------------------
++--------------------------------------------------------------------------------
++*)
++and parse_core_form = function
++  | Nil -> raise X_syntax_error
++  | (Bool(_)
++     | Number(_)
++     | Char(_)
++     | String(_)) as sexpr -> parse_const sexpr
++  | Pair(Symbol("quote"), Pair(sexpr, Nil)) -> parse_const sexpr
++  | Symbol(symbol) -> parse_var_form symbol
++
++  (* (if <test> <then> <else>) *)
++  | Pair(Symbol("if"), Pair(test, Pair(dit, dif))) ->
++    parse_if_form test dit dif
++
++  (* (define <var> <exp>) *)
++  | Pair(Symbol("define"), Pair(Symbol(var_name), Pair(exp, Nil))) ->
++    parse_def_form var_name exp
++
++  (* (set! <var> <exp>) *)
++  | Pair(Symbol("set!"), Pair(Symbol(var_name), Pair(exp, Nil))) ->
++    parse_set_form var_name exp
++
++  (* (or <exp>* ) *)
++  | Pair(Symbol("or"), exps) ->
++    parse_or_form exps
++
++  (* (begin <exp>* ) *)
++  | Pair(Symbol("begin"), exps) ->
++    parse_begin_form exps
++
++  (* (lambda ( <arg>* ) <exp>+) *)
++  | Pair(Symbol("lambda"), Pair(args, body)) ->
++    parse_lambda_form args body
++
++  (* application expression *)
++  (* (<operator> <operands>* ) *)
++  | Pair(operator, operands) ->
++    parse_appic_form operator operands
++
++(*
++--------------------------------------------------------------------------------
++--------------------------------- Tag-Parsing ----------------------------------
++--------------------------------------------------------------------------------
++*)
++and tag_parse = fun sexpr -> parse_core_form (expand_macro sexpr);;
++
++let tag_parse_expressions sexpr = List.map tag_parse sexpr;;
++
++end;; (* struct Tag_Parser *)

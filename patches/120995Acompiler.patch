@@ -1,0 +1,964 @@
+diff --git a/reader.ml b/reader.ml
+index 32445c2..882ae52 100644
+--- a/reader.ml
++++ b/reader.ml
+@@ -1,5 +1,6 @@
+ 
+ #use "pc.ml";;
++open PC;;
+ 
+ exception X_not_yet_implemented;;
+ exception X_this_should_not_happen;;
+@@ -29,6 +30,287 @@ let rec sexpr_eq s1 s2 =
+   | Pair(car1, cdr1), Pair(car2, cdr2) -> (sexpr_eq car1 car2) && (sexpr_eq cdr1 cdr2)
+   | _ -> false;;
+ 
++(*Operators*)
++let _equal_ = (char '=');;
++let _greater_ = (char '>');;
++let _less_ = (char '<');;
++let _exp_ = (char '^');;
++let _mul_ = (char '*');;
++let _plus_ = (char '+');;
++let _minus_ = (char '-');;
++let _hashtag_ =(char '#');;
++let _dot_ = (char '.');;
++let _HELP_ = (char '!');;
++let _moneisss_ = (char '$');;
++let _underscore_ = (char '_');;
++let _question_ = (char '?');;
++let _slash_ = (char '/');;
++let _colon_ = (char ':');;
++let _lowerLetter_ = (range 'a' 'z');;
++let _capitalLetter_ = (range 'A' 'Z');;
++let _Letters_ = disj _lowerLetter_ _capitalLetter_;; 
++
++let _withoutE_ = disj_list[(range 'a' 'd');(range 'f' 'z');(range 'A' 'D');(range 'F' 'Z')];;
++let _GeneralSignsExceptSlahsAndDot_ = disj_list [_Letters_;_equal_;_greater_;_less_;_exp_;_mul_;_plus_;_minus_;_hashtag_;_HELP_;_moneisss_;_underscore_;_question_;_colon_];; 
++let _GeneralSignsExceptSlahsAndDotAndE_ = disj_list [_withoutE_;_equal_;_greater_;_less_;_exp_;_mul_;_plus_;_minus_;_hashtag_;_HELP_;_moneisss_;_underscore_;_question_;_colon_];; 
++let _GeneralSigns_ = disj_list [_Letters_;_dot_;_slash_;_equal_;_greater_;_less_;_exp_;_mul_;_plus_;_minus_;_hashtag_;_HELP_;_moneisss_;_underscore_;_question_;_colon_];;
++let _toLowerCase_ = pack(_Letters_)(fun s->if((int_of_char s)<91) then (char_of_int ((int_of_char s)+32)) else s);;
++
++let _digit_ = (range '0' '9');;
++
++let nt_whitespaceStar = star nt_whitespace;;
++
++(*Special chars*)
++let _newline_ = pack (word_ci "newline") (fun _ -> char_of_int 10);;
++let _nul_ = pack (word_ci "nul") (fun _ -> char_of_int 0);;
++let _page_ = pack (word_ci "page") (fun _ -> char_of_int 12);;
++let _return_ = pack (word_ci "return") (fun _ -> char_of_int 13);;
++let _space_ = pack (word_ci "space") (fun _ -> char_of_int 32);;
++let _tab_ = pack (word_ci "tab") (fun _ -> char_of_int 9);;
++
++let _backslash_ = pack (plus (word "\\")) (fun _->char_of_int 92);;
++let _doubleQuote_ = pack (char '\"')(fun _->char_of_int 34);;
++
++let _convert_ x =
++  int_of_string ((list_to_string x));;
++
++let _convert_float_ x =
++  float_of_string (list_to_string x);;
++
++let rec gcd a b =
++  if b = 0 then (abs a) else gcd (abs b) ((abs a) mod (abs b));;
++
++let procssesedNumber x y = 
++  let _x_ = (_convert_ x) in
++  let _y_ = (_convert_ y) in
++  let _gcd_ = (gcd _x_ _y_) in
++  _x_/_gcd_;;
++
++  let hashSemi = word "#;";;
++
++  let leftParen = char '(';;
++  let rightParen = char ')';;
++
++  let make_paired nt_left nt_right nt =
++    let nt = caten nt_left nt in
++    let nt = pack nt (function (_, e) -> e) in
++    let nt = caten nt nt_right in
++    let nt = pack nt (function (e, _) -> e) in
++      nt;;
++(*------------------------------------------------------------------ Booleab Parser -----------------------------------------------------------------------------*)
++
++let rec nt_Boolean input =
++  let _true_ = pack (caten _hashtag_ (char_ci 't'))(fun _->Bool(true)) in
++  let _false_ = pack (caten _hashtag_ (char_ci 'f'))(fun _->Bool(false)) in
++  let _Boolean_ = disj _true_ _false_ in
++  _Boolean_  input
++  
++
++(*------------------------------------------------------------------ Char Parser --------------------------------------------------------------------------------*)
++  
++  and nt_Char input = 
++    let _charPrefix_ = caten _hashtag_ _backslash_ in
++    let _charPrefixPacked_ = pack(_charPrefix_)(fun s->[s]) in 
++
++  let _visibleSimpleChar_ = range (char_of_int 32)(char_of_int 255) in
++  let _visibleSimpleCharPacked_ = pack (_visibleSimpleChar_)(fun s ->[s]) in
++
++  let _namedChar_ = disj_list[_nul_;_newline_;_return_;_tab_;_page_;_space_] in
++  let _namedCharPacked_ = pack(_namedChar_)(fun s->[s]) in
++
++  let _CharShortcut_ = caten _charPrefixPacked_ (disj _namedCharPacked_ _visibleSimpleCharPacked_)in
++  let _Char_ = pack(_CharShortcut_)(fun (l,r)-> Char(List.hd r)) in
++  
++  _Char_ input
++  
++(*------------------------------------------------------------------ Number Parser ------------------------------------------------------------------------------*)
++(*<Number>*)
++
++and nt_Number input =
++  let _digit_ = (range '0' '9') in
++  let _natural_= plus _digit_ in
++  let _sign_ = pack (maybe (disj _plus_ _minus_))(fun s-> match s with 
++    |Some('+')-> '+'
++    |Some('-')->'-'
++    | _ -> '+')in
++
++
++let _numberGuardInteger_ = not_followed_by _natural_ _GeneralSigns_ in
++let _ValidateInteger_ =  pack (caten _sign_ _numberGuardInteger_) (fun (s,a) ->if(s='+') then List.tl(s::a) else (s::a)) in
++let _Integer_ = pack (_ValidateInteger_)(fun r-> Number(Fraction(int_of_string (list_to_string r),1))) in
++
++
++
++
++let _numberGuardNumerator_ = not_followed_by _natural_ _GeneralSignsExceptSlahsAndDot_ in
++(* major parse number as much as it can' until a slash or non wanted char or until the end*)
++let _majorIntegerNumerator_ = pack (caten _sign_ _numberGuardNumerator_) (fun (s,a) ->if(s='+') then List.tl(s::a) else (s::a)) in
++let _numerator_ = (caten _majorIntegerNumerator_ _slash_) in
++let _numeratorPacked_ = pack(_numerator_)(fun(l,r)->l) in
++let _Fraction_ = pack(caten _numeratorPacked_  _ValidateInteger_)(fun (x,y) -> Number(Fraction((procssesedNumber x y),(procssesedNumber y x)))) in   
++
++
++
++
++let _numberGuardFloat_ = not_followed_by _natural_ _GeneralSignsExceptSlahsAndDot_ in
++let _majorIntegerFloat_ = pack (caten _sign_ _numberGuardFloat_) (fun (s,a) ->if(s='+') then List.tl(s::a) else (s::a)) in
++let _dot_list_ = pack _dot_ (fun a -> [a]) in
++let _Float_ = pack (caten_list [_majorIntegerFloat_ ; _dot_list_ ; _numberGuardInteger_]) (fun a -> Number(Float(_convert_float_(List.flatten a)))) in
++
++
++
++(* 
++let _majorInteger_ = pack (caten _sign_ _natural_) (fun (s,a) ->if(s='+') then List.tl(s::a) else (s::a)) in
++let _ValidateInteger_ =  pack (caten _sign_ _natural_) (fun (s,a) ->if(s='+') then List.tl(s::a) else (s::a)) in *)
++
++let _numberGuardFloatScientific_ = not_followed_by _natural_ _GeneralSignsExceptSlahsAndDotAndE_ in
++let _majorInteger_ = pack (caten _sign_ _numberGuardFloatScientific_) (fun (s,a) ->if(s='+') then List.tl(s::a) else (s::a)) in
++
++(**)let _float_as_list_ = pack (caten_list [_majorIntegerFloat_ ; _dot_list_ ; _majorInteger_]) (fun a -> List.flatten a) in
++let _scientific_list_ = caten_list [(disj _float_as_list_ _majorInteger_) ; 
++                              (pack (char_ci 'e') (fun x->[x])) ;
++                              _ValidateInteger_] in
++let _scientific_list_to_sexprs_ x = match x with
++                                    | [ m ; e ; exp] ->  Number(Float( (_convert_float_ m) *. (10.0** (_convert_float_ exp))))
++                                    | _ -> raise X_this_should_not_happen in
++let _Scientific_ = pack _scientific_list_ _scientific_list_to_sexprs_ in 
++
++
++
++let _Number_ = disj_list [_Scientific_;_Fraction_;_Float_;_Integer_] in
++
++ _Number_ input
++
++
++
++
++(*------------------------------------------------------------------ String parser -----------------------------------------------------------------------------*)
++(*<String>*)
++and nt_String input = 
++  let _excludeDoubleQuote_ = range (char_of_int 0) (char_of_int 33) in
++  let _excludeBackslash_ = range (char_of_int 35) (char_of_int 91) in
++  let _theOtherChars_ = range (char_of_int 93) (char_of_int 255) in
++
++  let _stringLiteralChar_ = disj (disj _excludeDoubleQuote_ _excludeBackslash_) _theOtherChars_ in
++
++  let _backslashR_ = pack (word_ci "\\r") (fun _->char_of_int 13) in
++  let _backslashN_ = pack (word_ci "\\n") (fun _->char_of_int 10) in
++  let _backslashT_ = pack (word_ci "\\t") (fun _->char_of_int 9) in
++  let _backslashF_ = pack (word_ci "\\f") (fun _->char_of_int 12) in
++
++
++  let _stringMetaChar_ = disj_list[_backslashR_;_backslashN_;_backslashT_;_backslashF_;_backslash_] in
++
++  let _stringChar_ = disj _stringMetaChar_ _stringLiteralChar_ in
++  let _starStringChar_ = star _stringChar_ in
++  let _String_ = pack (caten (caten _doubleQuote_ _starStringChar_) _doubleQuote_)(fun ((x,y),z)->String(list_to_string(y))) in
++
++
++  _String_ input
++
++(*------------------------------------------------------------------Symbol parser ------------------------------------------------------------------------------*)
++(*<Symbol>*)
++and nt_Symbol input = 
++let _symbolCharNoDot_ = disj_list [_digit_ ; _toLowerCase_ ; _HELP_ ; _moneisss_ ; _exp_ ; _mul_ ; _minus_ ; _underscore_ ; _equal_ ; _plus_ ; _greater_ ; _less_ ; _question_ ; _slash_ ; _colon_] in
++let _symbolCharNoDotList_ = pack(_symbolCharNoDot_)(fun s->[s]) in
++let _SymbolChar_ = disj _symbolCharNoDot_ _dot_ in
++let _SymbolCharPlus_ = plus _SymbolChar_ in
++let _SymbolCharPlusPlus_ = pack(caten _SymbolChar_ _SymbolCharPlus_)(fun (l,r)->l::r) in
++let _Symbol_ = pack (disj _SymbolCharPlusPlus_ _symbolCharNoDotList_)(fun s->Symbol(list_to_string s)) in
++
++_Symbol_  input 
++
++(*------------------------------------------------------------------ Quoted parser ------------------------------------------------------------------------------*)
++and nt_Quoted input =
++  let _quoteSign_ = (char '\'') in
++  let _QuotedParser_ = pack (caten (caten (caten _quoteSign_ nt_whitespaceStar) skip_and_run)nt_whitespaceStar )(fun (((l,r),s),p)->Pair(Symbol("quote"),Pair(s,Nil))) in
++  _QuotedParser_ input
++ 
++(*------------------------------------------------------------------ QuasiQuoted parser -------------------------------------------------------------------------*)
++ and nt_QuasiQuoted input =
++  let _quasiquoteSign_ = pack(char '`')(fun s-> Symbol(list_to_string [s])) in
++  let _QuasiQuotedParser_ = pack (caten (caten (caten _quasiquoteSign_ nt_whitespaceStar) skip_and_run)nt_whitespaceStar )(fun (((l,r),s),p)->Pair(Symbol("quasiquote"),Pair(s,Nil))) in
++  _QuasiQuotedParser_ input
++
++(*------------------------------------------------------------------ Unquoted parser ----------------------------------------------------------------------------*)
++and nt_Unquoted input =
++  let _unquotedquoteSign_ = pack(char ',')(fun s-> Symbol(list_to_string [s])) in
++  let _UnQuotedParser_ = pack (caten (caten (caten _unquotedquoteSign_ nt_whitespaceStar) skip_and_run)nt_whitespaceStar )(fun (((l,r),s),p)->Pair(Symbol("unquote"),Pair(s,Nil))) in
++  _UnQuotedParser_ input
++
++(*------------------------------------------------------------------ UnquoteAndSpliced parser ----------------------------------------------------------------------------*)  
++and nt_UnquoteAndSpliced input = 
++  let _unAndSplicedSign_ = pack(caten (char ',') (char '@'))(fun (l,r)-> Symbol(list_to_string([l]@[r]))) in
++  let _unAndSplicedParser_ = pack (caten (caten (caten _unAndSplicedSign_ nt_whitespaceStar) nt_Sexpr)nt_whitespaceStar )(fun (((l,r),s),p)->Pair(Symbol("unquote-splicing"),Pair(s,Nil))) in
++  _unAndSplicedParser_ input 
++  (******************************************************************* Line Comment ********************************************************************************)
++  and skip_line_comment input =
++  let notSemi = disj_list [range (char_of_int 0) (char_of_int 9) ; range (char_of_int 11) (char_of_int 58) ; range (char_of_int 60) (char_of_int 255)] in
++  let delimiter = disj (pack(char (char_of_int 10))(fun x->[x])) nt_end_of_input in
++  let lineComment = caten_list [(pack (char ';') (fun x->[x])) ; (star notSemi) ; delimiter] in
++  let skip = pack lineComment (fun x -> []) in
++  skip input
++
++  (******************************************************************* Sexpr Comment ********************************************************************************)
++  and skip_sexpr_comments input =
++  let basicCommentSexpr = pack (caten hashSemi skip_and_run) (fun _->[]) in
++  let multiCommentSexpr =
++    pack (caten_list [nt_whitespaceStar ; hashSemi ; nt_whitespaceStar ; basicCommentSexpr ; nt_whitespaceStar ; pack skip_and_run (fun _->[])]) (fun _->[]) in
++  let commentSexpr = disj multiCommentSexpr basicCommentSexpr in
++  let skip = pack commentSexpr (fun x -> []) in
++  skip input
++
++  (******************************************************************* Nil parser ********************************************************************************)
++  and nt_nil input = 
++    let skipper = star (disj_list [skip_sexpr_comments ; skip_line_comment ; (pack nt_whitespace (fun x->[x]))]) in
++    let packed = pack (caten (caten leftParen skipper) rightParen) (fun _ -> Nil) in
++    packed input
++
++  (******************************************************************* Pair parser ********************************************************************************)
++  and nt_proper_list input =
++    let (exprs, trash) = make_paired leftParen rightParen (star skip_and_run) input in
++    (process_list exprs, trash)
++  and process_list exprs = 
++    match List.length exprs with
++    | 0 -> Nil
++    | 1 -> Pair (List.hd exprs, Nil)
++    | _ -> Pair (List.hd exprs, process_list (List.tl exprs))
++
++  and process_dot_list exprs last_pair =
++    match List.length exprs with
++    | 0 -> last_pair
++    | _ -> process_dot_list (List.rev (List.tl (List.rev exprs))) (Pair(List.hd (List.rev exprs) ,last_pair))
++
++  and nt_improper_list input =
++    let (exprs, rest) = make_paired leftParen _dot_ (plus skip_and_run) input in
++    let (lastExprs, trash) = skip_and_run rest in
++    let (a,b) = rightParen trash in
++    let before_last = List.hd (List.rev exprs) in
++    let last_pair = Pair(before_last, lastExprs) in
++    ((process_dot_list (List.rev (List.tl (List.rev exprs))) last_pair), b)
++    
++  (******************************************************************* Sexpr parser ********************************************************************************)
++and nt_Sexpr input = 
++  let _Sexpr_ = disj_list [nt_improper_list;nt_proper_list;nt_nil;nt_Boolean;nt_Char;nt_Number;nt_String;nt_Symbol;nt_Quoted;nt_QuasiQuoted;nt_Unquoted;nt_UnquoteAndSpliced] in
++  _Sexpr_ input
++  
++and skip_and_run input = 
++  let skipper = star (disj_list [skip_sexpr_comments ; skip_line_comment ; (pack nt_whitespace (fun x->[x]))]) in
++  let cleaned = skipper input in
++  let (e,s) = cleaned in
++  let (exprs, rest) = nt_Sexpr s in
++  let (trash, rest) = skipper rest in
++  (exprs, rest)
++
++and recursive_skip_and_run input =
++  let parsed = star skip_and_run in
++  let result = parsed input in
++  let (e,s) = result in
++  match s with
++  | [] -> e
++  | _ -> raise X_no_match;;
++
++  (******************************************************************* Module ********************************************************************************)
+ module Reader: sig
+   val read_sexprs : string -> sexpr list
+ end
+@@ -41,6 +323,8 @@ let normalize_scheme_symbol str =
+   else Printf.sprintf "|%s|" str;;
+ 
+ 
+-let read_sexprs string = raise X_not_yet_implemented;;
++let read_sexprs string = 
++  let theList = string_to_list string in
++  recursive_skip_and_run theList
+   
+ end;; (* struct Reader *)
+diff --git a/readme.txt b/readme.txt
+index e69de29..ecdd71e 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1,6 @@
++Name: Oz Elhassid; ID: 311326110
++Name: Chen Mordechai; ID: 205568082
++
++We assert that the work we submitted is 100% our own. We have not received any part from any other student in the class, nor have we give parts of it for use to others.
++Nor have we used code from other sources: Courses taught previously at this university,courses taught at other universities, various bits of code found on the Internet, etc.
++We realize that should our code be found to contain code from other sources, that a formal case shall be opened against us with va’adat mishma’at, in pursuit of disciplinary action.
+\ No newline at end of file
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..f675078 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -69,17 +69,177 @@ end;;
+ 
+ module Semantics : SEMANTICS = struct
+ 
+-let annotate_lexical_addresses e = raise X_not_yet_implemented;;
++  let findMinor paramList element =
++    let rec findIndexHelper paramList element index = 
++      if (List.length paramList == index) then -1 else
++      (if ((List.nth paramList index) = element) then index else (findIndexHelper paramList element (index+1)));
++      in findIndexHelper paramList element 0
++    ;;
++  let findMajor paramList element =
++    let rec findMajorHelper paramList element listIndex =
++      if (List.length paramList == listIndex) then -1 else
++      (if (List.exists (fun (x)-> x = element) (List.nth paramList listIndex)) then listIndex else (findMajorHelper paramList element (listIndex+1)));
++      in findMajorHelper (List.rev paramList) element 0
++    ;;
+ 
+-let annotate_tail_calls e = raise X_not_yet_implemented;;
++  let handleVar3 minor var =
++    if minor == -1 then 
++    Var'(VarFree(var)) else Var'(VarParam (var, minor));;
++  let handleVar2 major minor var =
++    match major with
++    | -1 -> handleVar3 minor var
++    | 0 -> handleVar3 minor var
++    | _ -> Var'(VarBound (var, major-1, minor))
++    ;;
++let handleVar argl var =
++  let major = findMajor argl var in
++  if argl = [] then (Var'(VarFree(var))) else
++  if major == (-1) then
++    (handleVar2 major (findMinor (List.nth argl 0) var) var)
++  else
++    (handleVar2 major (findMinor (List.nth (List.rev argl) major) var) var)
++  ;;
++let varExtractor argl var =
++  match var with
++  |Var(v) ->
++    begin
++      match (handleVar argl v) with
++      |Var'(toVar) -> toVar
++      |_ -> raise X_this_should_not_happen
++    end
++  |_ -> raise X_this_should_not_happen
++;;
+ 
+-let box_set e = raise X_not_yet_implemented;;
++let rec partA argl e =
++match e with 
++  |Const(x) -> Const'(x)
++  |Var(x) -> handleVar argl x
++  |If(check, thenClause, elseClouse) -> If'(partA argl check , partA argl thenClause, partA argl elseClouse)
++  |Seq(x) -> Seq'(List.map (partA argl) x)
++  |Set(x, y) -> Set'((varExtractor argl x),(partA argl y))
++  |Def(Var(x),y) -> Def'(VarFree(x),partA argl y)
++  |Or(x) -> Or'(List.map (partA argl) x)
++  |LambdaSimple(x, y) -> LambdaSimple' (x, (partA (argl@[x]) y)) 
++  |LambdaOpt(x, y, z) -> LambdaOpt' (x, y, (partA (argl@[x@[y]]) z))
++  |Applic(operator,seq) -> Applic'((partA argl operator),(List.map (partA argl) seq))
++  |_ -> raise X_this_should_not_happen
++;;
+ 
+-let run_semantics expr =
+-  box_set
+-    (annotate_tail_calls
+-       (annotate_lexical_addresses expr));;
+-  
+-end;; (* struct Semantics *)
++let rec partB etag in_tp=
++match etag with 
++|Const'(_) -> etag
+ 
++|Var'(_) -> etag
+ 
++|If'(test,thenClause,elseClause) ->If'(test,(partB thenClause in_tp),(partB elseClause in_tp))
++
++|Seq'(sequence) -> Seq'((List.map (partB' false) (List.rev(List.tl(List.rev(sequence)))))@[(partB (List.hd(List.rev(sequence))) in_tp)]) 
++(*And is a syntactic sugar to lambda therfore we shouldnt take care of it*)   
++|Or'(x) -> Or'((List.map (partB' false) (List.rev(List.tl(List.rev(x)))))@ [(partB (List.hd(List.rev(x))) in_tp)])
++|Set'(x,y) -> Set'(x , partB y false)
++|Def'(x,y) -> Def'(x, partB y in_tp)
++(*There is a chance that cond is a syntactic sugar which mean that we shouldnt take care of it*)
++(*Also about let *)
++|Applic'(operator,seq) -> (applicHandeling operator seq in_tp)
++|LambdaSimple' (params,body) -> LambdaSimple'(params,(partB body true))
++|LambdaOpt' (params,opt,body) -> LambdaOpt'(params,opt,(partB body true))
++|_ -> raise X_this_should_not_happen
++
++and partB' in_tp etag =
++  (partB etag in_tp)
++
++and applicHandeling operator seq in_tp =
++  match in_tp with 
++  |true -> ApplicTP'(operator, List.map (partB' false) seq)
++  |false -> Applic'((partB' false operator), List.map (partB' false) seq)
++
++let rec partC etag = 
++  let e = (partCA etag) in
++  let a = (partCB e) in
++      a;
++
++  and partCA etag =
++    match etag with 
++    |Const'(_) -> etag
++    |Var'(var) -> etag
++    |If'(test,thenClause,elseClause) -> If'(test,(partC thenClause),(partC elseClause)) 
++    |Seq'(sequence) -> Seq'((List.map partC sequence))
++    |Or'(x) -> Or'((List.map partC x))
++    |Set'(x,y) -> Set'(x , partC y)
++    |Def'(x,y) -> Def'(x, partC y)
++    |Applic'(operator,seq) -> Applic'((partC operator), (List.map partC seq)) 
++    |ApplicTP'(operator,seq) -> ApplicTP'((partC operator), (List.map partC seq)) 
++
++    |LambdaSimple' (params,body) -> (lambdaConvertor etag)
++    |LambdaOpt' (params,opt,body) -> (lambdaConvertor etag)
++    |_ -> etag
++
++    and lambdaConvertor etag =
++    match etag with 
++
++    |LambdaSimple' (params, Seq'(s)) -> (LambdaSimple' (params,partC(Seq'(List.mapi boxInit params @ s))))
++    |LambdaSimple' (params, s) -> if((List.length params) > 0) then LambdaSimple' (params, partC(Seq'(List.mapi boxInit params @ [s])))
++    else LambdaSimple' (params, partC(s))
++
++    |LambdaOpt' (params,opt,Seq'(s)) -> LambdaOpt'(params,opt,partC(Seq'((List.mapi boxInit (params@[opt]))@s)))
++    |LambdaOpt' (params,opt, s) -> LambdaOpt'(params,opt,partC(Seq'((List.mapi boxInit (params@[opt]))@[s])))
++    |_ -> raise X_this_should_not_happen
++    and boxInit index param =
++    Set'(VarParam(param, index), Box'(VarParam(param,index)))
++
++    and partCB etag =
++    match etag with 
++    |Const'(_) -> etag
++    |Var'(var) -> (handleGet var)
++    |If'(test,thenClause,elseClause) -> If'(partCB(test),(partCB thenClause),(partCB elseClause)) 
++    |Seq'(sequence) -> Seq'((List.map partCB sequence))
++    |Or'(x) -> Or'((List.map partC x))
++    |Set'(x,y) -> (handleSet x y)
++    |Def'(x,y) -> Def'(x, partCB y)
++    |Applic'(operator,seq) -> Applic'((partCB operator), (List.map partCB seq)) 
++    |ApplicTP'(operator,seq) -> ApplicTP'((partCB operator), (List.map partCB seq)) 
++
++    |LambdaSimple' (params,body) -> LambdaSimple' (params,(partCB body))
++    |LambdaOpt' (params,opt,body) -> LambdaOpt' (params,opt,(partCB body))
++    |_ -> etag
++
++    and handleGet var =
++      match var with
++      |VarParam(x,y)-> BoxGet'(VarParam (x,y))
++      |VarBound(x,y,z)->BoxGet'(VarBound(x,y,z))
++      |VarFree(x) -> (handleFree x)
++
++    and handleSet var value =
++      match var with
++      |VarParam(x,y)-> begin
++        match value with
++        |Box'(_) -> Set'((VarParam (x,y)), (partCB value))
++        |_ -> BoxSet'((VarParam (x,y)), (partCB value))
++        end
++      |VarBound(x,y,z)-> BoxSet'((VarBound(x,y,z)), (partCB value))
++      |VarFree(x) -> Set'((VarFree(x)), (partCB value))
++
++    and handleFree x =
++    match x with 
++    _-> Var'(VarFree(x))
++  ;;
++
++    let checker input = (Tag_Parser.tag_parse_expressions (Reader.read_sexprs input)) ;;
++    let form input = (List.hd (Reader.read_sexprs input));;
++    let test1 input = (partA [] (List.hd(checker input)));;   
++    let test2 input = (partB (test1 input) false);;
++    let test3 input = (partC (test2 input));;
++    
++    let annotate_lexical_addresses e = (partA [] e);;
++    
++    let annotate_tail_calls e = (partB e false);;
++    
++    let box_set e = (partC e);;
++    
++    let run_semantics expr =
++      box_set
++      (annotate_tail_calls
++      (annotate_lexical_addresses expr));;
++      
++    end;; (* struct Semantics *)
++    
+\ No newline at end of file
+diff --git a/tag-parser.ml b/tag-parser.ml
+index 138249e..6c192b1 100644
+--- a/tag-parser.ml
++++ b/tag-parser.ml
+@@ -58,8 +58,445 @@ let reserved_word_list =
+ 
+ (* work on the tag parser starts here *)
+ 
+-let tag_parse_expressions sexpr = raise X_not_yet_implemented;;
++(*------------------------------------------------------------------------Sexpr list importer -------------------------------------------------------------------------*)
+ 
++(*Checkes if input is a reserved word*)
++let reserved_detector input =
++  if (List.exists (fun x-> x=input) reserved_word_list) then true else false ;;
++
++(*Detect if Nested pairs is a proper list (true) or improper list (false*)
++let rec proper_detector aList =
++  match aList with
++  | Nil -> true
++  | Pair (a,b) -> (proper_detector b)
++  | _ -> false;;
++
++
++
++(*Function convert nested pairs of Sexprs into string list, make a list from thier content *)
++let rec convertNestedPairsToStringList pairs =
++  match pairs with
++  | Nil -> []
++  | Pair (Symbol(a),Nil) -> [a]
++  | Pair (Symbol(a),b) -> List.flatten [[a] ; convertNestedPairsToStringList b]
++  | _-> raise X_syntax_error;;
++
++let rec convertNestedImproperPairsToStringList pairs =
++  match pairs with
++  | Symbol(a) -> [a]
++  | Pair (Symbol(a),Symbol(b)) -> List.flatten [[a] ; [b]]
++  | Pair (Symbol(a),Pair(b,c)) -> List.flatten [[a] ; (convertNestedImproperPairsToStringList (Pair(b,c)))]
++  | _-> raise X_syntax_error;;
++
++(*Convert nested pairs into list works only on proper non-empty lists*)
++let rec pairsToList pairs =
++  match pairs with
++  | Pair (a,Nil) -> [a]
++  | Pair (a,b) -> List.flatten [[a] ; pairsToList b]
++  | _-> [pairs];;
++
++let symbolContent input =
++  match input with
++  |Symbol(x) -> x
++  |_ -> raise X_syntax_error;;
++
++
++
++
++
++
++
++
++(*Convert nested pairs into a strings's list*)
++let rec tag_parse sexp =
++  match sexp with
++  (*PART A - CORE FORMS*)
++
++  (*1. Constant*)
++  (*Unquoted-self evaluating*)
++  |Number(x)-> Const(Sexpr(Number(x))) (*//OK*)
++  |Bool(x)-> Const(Sexpr(Bool(x)))     (*//OK*)
++  |Char(x)-> Const(Sexpr(Char(x)))     (*//OK*)
++  |String(x)->Const(Sexpr(String(x)))  (*//OK*) 
++  (*Quoted*)
++  |Pair(Symbol("quote"), Pair(content, Nil)) -> Const(Sexpr(content)) (*//OK*)
++
++
++  (*2 Variables*)
++  |Symbol(x)-> tag_var x (*//OK*)
++
++
++  (*3-Conditionals*)
++  |Pair(Symbol("if"),then_else)->tag_if sexp (*//OK*)
++
++
++  (*4-Lambda expressions*)
++  |Pair(Symbol("lambda"),Pair(argsList,funcBody))->(tag_lambda argsList funcBody) (*//OK*)
++
++  (*6-Disjunctions*)
++  |Pair(Symbol("or"), lst) -> (tag_or lst)(*//OK*)
++
++
++  (*7-Definitions*)
++  |Pair(Symbol("define"), Pair(Symbol(var), Pair(expr, Nil))) -> Def(tag_var var, tag_parse expr) (*//OK*)
++
++
++  (*8-Assignments*)
++  |Pair(Symbol("set!"), Pair(name, Pair(value, Nil))) -> Set(tag_parse name, tag_parse value)     (*//OK*)
++
++
++  (*9-Sequence*)
++  |Pair(Symbol("begin"),seq)->(tag_sequence seq) (*//OK*)
++
++  (*PART B MACRO-EXPANSIONS*)
++
++  (*10-Quasiquote*)
++  |Pair(Symbol("quasiquote"),_) -> (tag_quasi sexp) (*//OK*)
++
++  (*11-Cond*)
++  |Pair(Symbol("cond"), ribs) -> (tag_cond sexp) (*//OK*)
++
++  (*12-Let *)
++  |Pair(Symbol("let"),Pair(args,body)) -> (tag_let args body) (*//OK*)
++
++  (*13-Let* *)
++  |Pair(Symbol("let*"),_)-> (tag_letStar sexp) (*//OK*)
++
++  (*14-Letrec*)
++  |Pair(Symbol("letrec"),Pair(args,body)) -> (tag_letrec args body) (*//OK*)
++
++  (*15-and*)
++  |Pair(Symbol("and"),rest) -> (tag_and rest) (*//OK*)
++
++  (*16-MIT define*)
++  |Pair(Symbol("define"), (Pair(Pair(name, argl), expr))) -> (tag_mit_def name argl expr)
++
++  (*17-Pset!*)
++  |Pair(Symbol("pset!"),args) -> (tag_pset sexp)
++
++
++  (*5-Applications*)
++  |Pair(_,_) -> tag_applic sexp
++
++  |_ -> raise X_syntax_error
++
++
++
++
++(*Implementation--------------------------------------------------------------------------------------------------------*)
++
++
++(*Responsible to 2*)
++and tag_var toVar =
++  if (reserved_detector toVar) then raise X_syntax_error else Var(toVar)
++
++
++(*Responsible to 3*)
++and tag_if input =
++  match input with
++  | Pair(_, Pair(cond, Pair(thenClause,optionalElse))) ->
++  let parsedCond = (tag_parse cond) in
++  let parsedThen = (tag_parse thenClause) in
++  sub_tag_if optionalElse parsedCond parsedThen
++  |_ -> raise X_syntax_error
++
++and sub_tag_if optionalElse parsedCond parsedThen =
++  match optionalElse with
++  |Pair(elseClause, Nil) -> If(parsedCond,parsedThen,(tag_parse elseClause))
++  |Nil -> If(parsedCond,parsedThen, Const(Void))
++  |_-> raise X_syntax_error
++
++
++(*Responsible to 4*)
++and tag_lambda args body =
++  if (proper_detector args) then (tag_lambda_simple args body) else (tag_lambda_opt args body)
++
++and tag_lambda_simple args body =
++  let args_list = convertNestedPairsToStringList args in
++  let body_ready = tag_sequence body in
++  LambdaSimple(args_list,body_ready)
++
++and tag_lambda_opt args body =
++  let mandatory_args_list = List.rev (List.tl (List.rev (convertNestedImproperPairsToStringList args)))  in
++  let optional_arg = List.hd (List.rev (convertNestedImproperPairsToStringList args))  in
++  let body_ready = tag_sequence body in
++  LambdaOpt(mandatory_args_list, optional_arg, body_ready)
++
++
++(*Responsible to 5*)
++and tag_applic exprs =
++  let preApplic = (pairsToList exprs) in
++  let readyApplic = (List.map tag_parse preApplic) in
++  let theOperator = (List.hd readyApplic) in
++  let theArguments = (List.tl readyApplic) in
++  Applic(theOperator, theArguments)
++
++
++(*Responsible to 6*)
++and tag_or orList =
++  match orList with
++  | Nil -> Const(Sexpr(Bool false))
++  | Pair(a,b) -> Or(List.map tag_parse (pairsToList orList))
++  | _ -> raise X_syntax_error
++
++
++(*Responsible to 9*)
++and tag_sequence seq =
++  match seq with
++  | Pair(a, b) -> tag_sequence2 seq
++  | Nil -> Const(Void)
++  | Symbol(a) -> Var(a)
++  |_ -> raise X_syntax_error
++
++and tag_sequence2 seq =
++  let preSeq = (pairsToList seq) in
++  let readySeq = (List.map tag_parse preSeq) in
++  let readySeq = List.flatten (List.map unseq readySeq) in
++  let expressionAmount = (List.length readySeq) in
++  if (expressionAmount = 1)
++  then (List.hd readySeq)
++  else Seq(readySeq)
++
++and unseq seq =
++  match seq with
++  | Seq(x) -> x
++  | _ -> [seq]
++
++
++(*Responsible to 10*)
++and tag_quasi input =
++  match input with
++  | Pair(Symbol("quasiquote"),Pair(x,Nil)) ->
++  let arranged = (quasi_base_a x) in
++  tag_parse(arranged)
++  |_ -> raise X_syntax_error
++
++ and quasi_base_a input =
++  match input with
++  |Pair (Symbol("unquote"),Pair(sexpr,_))->sexpr
++  |Pair (Symbol("unquote-splicing"),_) -> Pair(Symbol("quote"), input)
++  |Nil -> Pair(Symbol("quote"),Pair(input,Nil))
++  |Symbol(x) -> Pair(Symbol("quote"),Pair(input,Nil))
++  |Pair(car,cdr) -> (quasi_base_b car cdr)
++  |_-> input
++
++and quasi_base_b car cdr =
++  match car with
++  |Pair(Symbol("unquote-splicing"),Pair(sexpr,Nil))-> Pair(Symbol("append"),Pair(sexpr, Pair((quasi_base_a cdr),Nil)))
++  |_ -> Pair(Symbol("cons"),Pair((quasi_base_a car),Pair((quasi_base_a cdr),Nil)))
++
++
++
++(*Responsible to 11*)
++and tag_cond ribs =
++  match ribs with
++  |Pair(Symbol("cond"),Pair(current, rest)) ->
++  let toParse =(examine_rib current rest) in
++  (tag_parse toParse)
++  |_ -> raise X_syntax_error
++
++and examine_rib current rest =
++  match current with
++  |Pair(Symbol("else"),tasks)->Pair(Symbol("begin"),tasks)
++  |Pair(cond,Pair(Symbol "=>", thenClause)) -> (secondOption cond thenClause rest)
++  |Pair(cond,thenClause) -> (firstOption cond thenClause rest)
++  |_ -> raise X_syntax_error
++
++and firstOption cond thenClause rest =
++  match rest with
++  |Nil-> Pair (Symbol("if"),Pair(cond,Pair(Pair(Symbol("begin"),thenClause), Nil)))
++  |_  -> Pair (Symbol("if"),Pair(cond,Pair(Pair(Symbol("begin"),thenClause),Pair ((examine_rib (adjusterCurrent rest)(adjusterRest rest)), Nil))))
++
++and secondOption expr expr_f cond_ribs =
++  match cond_ribs with
++  |Nil ->
++    Pair (Symbol "let",
++ Pair
++  (Pair (Pair (Symbol "value", Pair (expr, Nil)),
++    Pair
++     (Pair (Symbol "f",
++       Pair (Pair (Symbol "lambda", Pair (Nil, expr_f)),
++        Nil)),
++     Nil)),
++  Pair
++   (Pair (Symbol "if",
++     Pair (Symbol "value",
++      Pair (Pair (Pair (Symbol "f", Nil), Pair (Symbol "value", Nil)), Nil))),
++   Nil)))
++
++  |_ ->
++  Pair (Symbol "let",
++ Pair
++  (Pair (Pair (Symbol "value", Pair(expr, Nil)),
++    Pair
++     (Pair (Symbol "f",
++       Pair (Pair (Symbol "lambda", Pair (Nil, expr_f)),
++        Nil)),
++     Pair
++      (Pair (Symbol "rest",
++        Pair
++         (Pair (Symbol "lambda", Pair (Nil, Pair ((examine_rib (adjusterCurrent cond_ribs)(adjusterRest cond_ribs)), Nil))),
++         Nil)),
++      Nil))),
++  Pair
++   (Pair (Symbol "if",
++     Pair (Symbol "value",
++      Pair (Pair (Pair (Symbol "f", Nil), Pair (Symbol "value", Nil)),
++       Pair (Pair (Symbol "rest", Nil), Nil)))),
++   Nil)))
++
++and adjusterCurrent rest =
++  match rest with
++  | Pair(current,newRest) -> current
++  |_ -> raise X_syntax_error
++
++  and adjusterRest rest =
++  match rest with
++  |Pair(current,newRest) -> newRest
++  |_ -> raise X_syntax_error
++
++
++(*Responsible to 12*)
++and tag_let args body =
++  let letArgs = (letArgsCollector args) in
++  let letVals = (letValsCollector args) in
++  let bodySeq = (tag_sequence body) in
++  Applic(LambdaSimple(letArgs,bodySeq),letVals)
++  
++and letArgsCollector input =
++  match input with
++  |Nil->[]
++  |Pair(Pair(Symbol(field),value),Nil)->[field]
++  |Pair(Pair(Symbol(field),value),next)->List.flatten [[field] ; letArgsCollector next]
++  |_->raise X_syntax_error
++
++and letValsCollector input =
++  match input with
++  |Pair(Pair(_,Pair(value,Nil)),Nil)-> [(tag_parse value)]
++  |Pair(Pair(_,Pair(value,Nil)),next)-> List.flatten [[(tag_parse value)] ; letValsCollector next]
++  |_->[]
++
++
++  (*Responsible to 13*)
++and letStarConvertor args body =
++  match args with
++  |Nil -> Pair(Symbol("let"),Pair(Nil,body))
++  |Pair(current,Nil)-> Pair(Symbol("let"),Pair(args,body)) 
++  |Pair(current,rest)-> Pair(Symbol("let"),Pair(Pair(current,Nil),Pair((letStarConvertor rest body),Nil)))
++  |_->raise X_syntax_error
++
++and tag_letStar input =
++  match input with
++   | Pair(Symbol("let*"),Pair(args,body)) ->
++   let pre = (letStarConvertor args body) in
++   (tag_parse pre)
++   |_ -> raise X_syntax_error
++
++(*Responsible to 14*)
++and tag_letrec args body =
+   
++  let argsList = (letArgsCollectorDemi args) in
++  let valsList = (letValsCollectorDemi args) in
++  let adjuster = (adjustBody argsList valsList) in
++  let n = (List.length argsList) in
++  let demiArgsPre = (buildDemiList n) in
++  let demiArgsPost = (List.map tag_parse demiArgsPre) in
++  let preBody = (pairsToList body) in
++  let theBody = (List.map tag_parse (List.flatten[adjuster;preBody])) in
++  let finally = Seq(theBody) in
++  Applic(LambdaSimple(argsList,finally),demiArgsPost)
++ 
++  
++and letArgsCollectorDemi input =
++  match input with
++  |Nil->[]
++  |Pair(Pair(Symbol(field),value),Nil)->[field]
++  |Pair(Pair(Symbol(field),value),next)->List.flatten [[field] ; letArgsCollectorDemi next]
++  |_->raise X_syntax_error
++
++and letValsCollectorDemi input =
++  match input with
++  |Pair(Pair(_,Pair(value,Nil)),Nil)-> [value]
++  |Pair(Pair(_,Pair(value,Nil)),next)-> List.flatten [[value] ; letValsCollectorDemi next]
++  |_->[]
++
++and buildDemiList n =
++  match n with
++  |0->[]
++  |_->List.flatten [[Pair (Symbol "quote", Pair (Symbol "whatever", Nil))] ; (buildDemiList (n-1))]
++
++
++and setMaker a b =
++  Pair(Symbol "set!", Pair (Symbol(a),Pair (b, Nil)))
++
++and adjustBody args vals =
++  (List.map2 setMaker args vals)
++
++
++
++(*Responsible to 15*)
++and tag_and rest =
++match rest with
++  |Nil -> Const(Sexpr(Bool true))
++  |Pair(x,Nil)-> (tag_parse x)
++  |Pair(x,y) -> (tag_parse(Pair (Symbol "if",Pair (x, Pair (Pair(Symbol("and"),y),Pair(Bool false, Nil))))))
++  |_-> raise X_syntax_error
++
++
++(*Responsible to 16*)
++and tag_mit_def name argl expr =
++  tag_parse (Pair(Symbol("define"), Pair(name, Pair(Pair(Symbol("lambda"), Pair(argl, expr)), Nil))))
++
++
++(*Rsponsible to 17*)
++and tag_pset input =
++  match input with
++  |Pair(Symbol("pset!"),args) -> (continue_Pset args)
++  |_-> raise X_syntax_error
++
++and continue_Pset args =
++    let valsList = (letValsCollectorDemi args) in
++    let valListReady = (List.map tag_parse valsList) in
++    let argsListTEMP = (letArgsCollectorTEMP args) in
++    let argsList = (letArgsCollector args) in
++  (* let argsAsSexprList = (pairsToList args) in *)
++    let adjuster = (adjustBodyPSET argsList argsListTEMP) in
++    let theBody = (List.map tag_parse (List.flatten[adjuster])) in
++    let finally = Seq(theBody) in
++    Applic(LambdaSimple(argsListTEMP,finally),valListReady)
++
++and createTEMPvar str1 =
++    str1^"0"
++
++and letArgsCollectorTEMP input =
++  match input with
++  |Nil->[]
++  |Pair(Pair(Symbol(field),value),Nil)->[field^"0"]
++  |Pair(Pair(Symbol(field),value),next)->List.flatten [[field^"0"] ; letArgsCollectorTEMP next]
++  |_->raise X_syntax_error
++
++ and setMakerPSET a b =
++ Pair(Symbol "set!", Pair (Symbol(a),Pair (Symbol(b), Nil)))
++
++ and adjustBodyPSET args vals =
++   (List.map2 setMakerPSET args vals)
++
++
++
++
++
++  ;;
++
++let checker input = (tag_parse (List.hd (Reader.read_sexprs input))) ;;
++let form input = (List.hd (Reader.read_sexprs input));;
++
++let tester func input =
++  let asSexp = (form input) in
++  (func asSexp);;
++
++let tag_parse_expressions sexpr = List.map tag_parse sexpr ;;
++
++
+ end;; (* struct Tag_Parser *)
+ 
++let form input = (List.hd (Reader.read_sexprs input));;

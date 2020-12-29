@@ -1,0 +1,4 @@
+LambdaSimple (["x"; "y"],
+ Seq
+  [LambdaSimple ([], Set (Var "x", Var "y"));
+   LambdaSimple ([], Set (Var "y", Var "x"))])

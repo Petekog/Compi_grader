@@ -1,0 +1,2183 @@
+diff --git a/base.ml b/base.ml
+new file mode 100644
+index 0000000..594d3dd
+--- /dev/null
++++ b/base.ml
+@@ -0,0 +1,189 @@
++module type Monoid  = sig
++  type t;;
++  val (+) : t -> t -> t;;
++  val zero : t;;
++end;;
++
++module type Functor = sig
++  type 'a f;;
++  val (<$>) : ('a -> 'b) -> 'a f -> 'b f;;
++end;;
++
++module type Applicative = sig
++  include Functor;;
++  val (<*>) : ('a -> 'b) f -> 'a f -> 'b f;;
++  val pure : 'a -> 'a f;;
++end;;
++
++module type Alternative = sig
++  include Applicative;;
++  val (<|>) : 'a f -> 'a f -> 'a f;;
++  val empty : 'a f;;
++end;;
++
++module type Monad = sig
++  include Applicative;;
++  type 'a m = 'a f;;
++  val (>>=) : 'a m -> ('a -> 'b m) -> 'b m;;
++end;;
++
++module FunctorLib (F : Functor) = struct
++end;;
++
++module ApplicativeLib (A : Applicative) = struct
++  let ( *> ) : 'a A.f -> 'b A.f -> 'b A.f =
++    let open A in
++    fun a b -> (fun a b -> b) <$> a <*> b;;
++
++  let ( <* ) : 'a A.f -> 'b A.f -> 'a A.f =
++    let open A in
++    fun a b -> (fun a b -> a) <$> a <*> b;;
++end;;
++
++module AlternativeLib (A : Alternative) = struct
++  include A;;
++  
++  let guard cond =
++    if cond then pure () else empty;;
++end;;
++
++module MonadLib (M: Monad) = struct
++  include M;;
++  let (=<<) f x =
++    x >>= f;;
++
++  let join xss = (=<<) (fun x -> x) xss;;
++end;;
++
++
++
++module Bool = struct
++  module Or = struct
++    type t = bool;;
++    let (+) = (||);;
++    let zero = false;;
++  end;;
++  module And = struct
++    type t = bool;;
++    let (+) = (&&);;
++    let zero = true;;
++  end;;
++end;;
++
++module Option = struct
++  let none = Option.none;;
++  let some = Option.some;;
++
++  let (<$>) f x =
++    match x with None -> None
++               | Some x -> Some (f x);;
++  let (<*>) f x =
++    match f with None -> None
++               | Some f -> f <$> x;;
++  let pure = some;;
++  let (>>=) m f =
++    match m with None -> None
++               | Some x -> f x;;
++
++  let (=<<) f m = (>>=) m f;;
++
++  let rec sequence xs =
++    List.fold_right
++      (fun a b -> List.cons <$> a <*> b)
++      xs
++      (pure []);;
++
++  let fold f a x =
++    match x with None -> a
++               | Some x -> f a x;;
++
++  let empty = none;;
++  let (<|>) a b =
++    match a with
++      None -> b
++    | _ -> a;;
++  let guard cond x =
++    match x with Some x when cond x -> some x
++               | _ -> none;;
++
++  let is_none = Option.is_none;;
++  let is_some = Option.is_some;;
++end;;
++
++module Fun = struct
++  let (+) f g x = f (g x);;
++  let zero x = x;;
++  let on ( * ) f a b = f a * f b;;
++  let (++) f g a b = ((+)+(+)) f g a b;;
++  let (+++) f g a b c = ((+)+(+)+(+)) f g a b c;;
++  let uncurry f (a,b) = f a b;;
++  let curry f a b = f (a,b);;
++  let flip f a b = f b a;;
++end;;
++
++module List = struct
++  include List;;
++  type 'a f = 'a list;;
++  let (<$>) = List.map;;
++
++  module CP (* CartesianProduct *) = struct
++    type 'a f = 'a list;;
++    let (<$>) = List.map;;
++    
++    let rec (<*>) fs xs =
++      match fs with [] -> []
++                  | f :: fs -> (f <$> xs) @ (fs <*> xs);;
++    let pure x = [x];;
++    
++    let rec (>>=) xs f =
++      match xs with [] -> []
++                  | x :: xs -> f x @ (xs >>= f);;
++
++    let (=<<) f xs = xs >>= f;;
++    let join xss = (fun x -> x) =<< xss
++  end;;
++  
++  module Zip = struct
++    type 'a f = 'a list;;
++    let (<$>) = List.map;;
++    
++    let rec (<*>) fs xs =
++      match fs,xs with
++        (f::fs,x::xs) -> f x :: (fs <*> xs)
++      | _ -> [];;
++  end;;
++
++  let rec unzip : ('a * 'b) list -> 'a list * 'b list =
++    function
++    | (x,y) :: xys ->
++       let (xs,ys) = unzip xys in
++       (x::xs,y::ys)
++    | _ -> ([],[]);;
++  
++  module Foldable (M : Monoid) = struct
++    let fold : M.t list -> M.t =
++      fun xs -> List.fold_right M.(+) xs M.zero
++  end;;
++  
++  let rec pair_with : ('a -> 'a) -> 'a -> 'b list -> ('a * 'b) list =
++    fun succ zero ->
++    function
++    | x :: xs -> (zero,x) :: pair_with succ (succ zero) xs
++    | [] -> [];;
++
++  let cons_of_list : 'a list -> ('a * 'a list) option =
++    function
++    | x :: xs -> Option.some (x,xs)
++    | [] -> Option.none;;
++
++  let pair_of_list : 'a list -> ('a * 'a) option =
++    function
++    | [x;y] -> Option.some (x,y)
++    | _ -> Option.none;;
++
++  let rec is_unique : 'a list -> bool =
++    function
++    | [] -> true
++    | x :: xs -> not (List.mem x xs) && is_unique xs;;
++  
++end;;
+diff --git a/parsing_combinators.ml b/parsing_combinators.ml
+new file mode 100644
+index 0000000..29506ef
+--- /dev/null
++++ b/parsing_combinators.ml
+@@ -0,0 +1,102 @@
++#use "base.ml";;
++
++type ('a, 'b) parser = 'a list -> ('b * 'a list) option;;
++
++module Parser = struct
++
++  let pure: 'a -> ('b, 'a) parser =
++    fun x a -> Some (x, a);;
++
++  let (<$>): ('a -> 'b) -> ('c, 'a) parser -> ('c, 'b) parser =
++    fun f p x ->
++    Option.(
++      (fun (x,y) -> (f x, y)) <$> (p x)
++    );;
++
++  let (<*>): ('c, 'a -> 'b) parser -> ('c, 'a) parser -> ('c, 'b) parser =
++    fun pf px x ->
++    Option.(
++      (pf x) >>= (fun (f,r) ->
++        (fun (x,r) -> (f x, r)) <$> (px r))
++    );;
++
++  let ( *> ) a b = (fun a b -> b) <$> a <*> b;;
++
++  let ( <* ) a b = (fun a b -> a) <$> a <*> b;;
++
++  let (>>=): ('c, 'a) parser -> ('a -> ('c, 'b) parser) -> ('c, 'b) parser =
++    fun px f x ->
++    Option.(
++      (px x) >>= (fun (x,r) -> f x r)
++    );;
++
++  let empty: ('a, 'b) parser =
++    fun _ -> None;;
++
++  let (<|>): ('a, 'b) parser -> ('a, 'b) parser -> ('a, 'b) parser =
++    fun p1 p2 x ->
++    match p1 x with
++    | None -> p2 x
++    | y -> y;;
++
++  let guard: ('b -> bool) -> ('a, 'b) parser -> ('a, 'b) parser =
++    fun cond p xs ->
++    Option.(
++      (p xs) >>=
++        (fun (x,r) -> if cond x then Some (x,r) else None)
++    );;
++
++  let one_of: ('a ,'b) parser list -> ('a, 'b) parser =
++    fun ps -> List.fold_left (<|>) empty ps;;
++
++  let sequence: ('a, 'b) parser list -> ('a, 'b list) parser =
++    fun xs ->
++    List.fold_right
++      (fun p1 p2 -> List.cons <$> p1 <*> p2)
++      xs
++      (pure []);;
++
++  let parse_by: ('a -> bool) -> ('a, 'a) parser =
++    fun cond xs ->
++    match xs with
++    | x::xs when cond x -> Some (x,xs)
++    | _ -> None;;
++
++  let any: ('a, 'a) parser =
++    fun xs ->
++    parse_by (fun x -> true) xs;;
++  
++  let element: 'a -> ('a, 'a) parser =
++    fun c ->
++    parse_by ((==) c);;
++  
++  let elements: 'a list -> ('a, 'a list) parser =
++    fun xs ->
++    sequence (List.map element xs);;
++  
++  let rec star: ('a, 'b) parser -> ('a, 'b list) parser =
++    fun p xs ->
++    ((List.cons <$> p <*> star p) <|> pure []) xs;;
++  
++  let plus: ('a, 'b) parser -> ('a, 'b list) parser =
++    fun p xs ->
++    (List.cons <$> p <*> star p) xs;;
++  
++  let (--): ('a, 'b) parser -> ('a, 'c) parser -> ('a, 'b) parser =
++    fun px pm xs ->
++    match pm xs with
++    | None -> px xs
++    | _ -> None;;
++  
++  let must_end: ('a, 'b) parser -> ('a, 'b) parser =
++    fun p xs ->
++    Option.(
++      p xs >>= (function (_,[]) as r -> Some r | _ -> None)
++    );;
++  
++  let range (<=) low high =
++    parse_by
++      (fun c -> low <= c && c <= high);;
++
++end;;
++
+diff --git a/pc.ml b/pc.ml
+deleted file mode 100644
+index 6a25660..0000000
+--- a/pc.ml
++++ /dev/null
+@@ -1,189 +0,0 @@
+-(* pc.ml
+- * A parsing-combinators package for ocaml
+- *
+- * Prorammer: Mayer Goldberg, 2018
+- *)
+-
+-(* general list-processing procedures *)
+-
+-let rec ormap f s =
+-  match s with
+-  | [] -> false
+-  | car :: cdr -> (f car) || (ormap f cdr);;
+-
+-let rec andmap f s =
+-  match s with
+-  | [] -> true
+-  | car :: cdr -> (f car) && (andmap f cdr);;	  
+-
+-let lowercase_ascii  =
+-  let delta = int_of_char 'A' - int_of_char 'a' in
+-  fun ch ->
+-  if ('A' <= ch && ch <= 'Z')
+-  then char_of_int ((int_of_char ch) - delta)
+-  else ch;;
+-
+-let string_to_list str =
+-  let rec loop i limit =
+-    if i = limit then []
+-    else (String.get str i) :: (loop (i + 1) limit)
+-  in
+-  loop 0 (String.length str);;
+-
+-let list_to_string s =
+-  String.concat "" (List.map (fun ch -> String.make 1 ch) s);;
+-
+-module PC = struct
+-
+-(* the parsing combinators defined here *)
+-  
+-exception X_not_yet_implemented;;
+-
+-exception X_no_match;;
+-
+-let const pred =
+-  function 
+-  | [] -> raise X_no_match
+-  | e :: s ->
+-     if (pred e) then (e, s)
+-     else raise X_no_match;;
+-
+-let caten nt1 nt2 s =
+-  let (e1, s) = (nt1 s) in
+-  let (e2, s) = (nt2 s) in
+-  ((e1, e2), s);;
+-
+-let pack nt f s =
+-  let (e, s) = (nt s) in
+-  ((f e), s);;
+-
+-let nt_epsilon s = ([], s);;
+-
+-let caten_list nts =
+-  List.fold_right
+-    (fun nt1 nt2 ->
+-     pack (caten nt1 nt2)
+-	  (fun (e, es) -> (e :: es)))
+-    nts
+-    nt_epsilon;;
+-
+-let disj nt1 nt2 =
+-  fun s ->
+-  try (nt1 s)
+-  with X_no_match -> (nt2 s);;
+-
+-let nt_none _ = raise X_no_match;;
+-  
+-let disj_list nts = List.fold_right disj nts nt_none;;
+-
+-let delayed thunk s =
+-  thunk() s;;
+-
+-let nt_end_of_input = function
+-  | []  -> ([], [])
+-  | _ -> raise X_no_match;;
+-
+-let rec star nt s =
+-  try let (e, s) = (nt s) in
+-      let (es, s) = (star nt s) in
+-      (e :: es, s)
+-  with X_no_match -> ([], s);;
+-
+-let plus nt =
+-  pack (caten nt (star nt))
+-       (fun (e, es) -> (e :: es));;
+-
+-let guard nt pred s =
+-  let ((e, _) as result) = (nt s) in
+-  if (pred e) then result
+-  else raise X_no_match;;
+-  
+-let diff nt1 nt2 s =
+-  match (let result = nt1 s in
+-	 try let _ = nt2 s in
+-	     None
+-	 with X_no_match -> Some(result)) with
+-  | None -> raise X_no_match
+-  | Some(result) -> result;;
+-
+-let not_followed_by nt1 nt2 s =
+-  match (let ((_, s) as result) = (nt1 s) in
+-	 try let _ = (nt2 s) in
+-	     None
+-	 with X_no_match -> (Some(result))) with
+-  | None -> raise X_no_match
+-  | Some(result) -> result;;
+-	  
+-let maybe nt s =
+-  try let (e, s) = (nt s) in
+-      (Some(e), s)
+-  with X_no_match -> (None, s);;
+-
+-(* useful general parsers for working with text *)
+-
+-let make_char equal ch1 = const (fun ch2 -> equal ch1 ch2);;
+-
+-let char = make_char (fun ch1 ch2 -> ch1 = ch2);;
+-
+-let char_ci =
+-  make_char (fun ch1 ch2 ->
+-	     (lowercase_ascii ch1) =
+-	       (lowercase_ascii ch2));;
+-
+-let make_word char str = 
+-  List.fold_right
+-    (fun nt1 nt2 -> pack (caten nt1 nt2) (fun (a, b) -> a :: b))
+-    (List.map char (string_to_list str))
+-    nt_epsilon;;
+-
+-let word = make_word char;;
+-
+-let word_ci = make_word char_ci;;
+-
+-let make_one_of char str =
+-  List.fold_right
+-    disj
+-    (List.map char (string_to_list str))
+-    nt_none;;
+-
+-let one_of = make_one_of char;;
+-
+-let one_of_ci = make_one_of char_ci;;
+-
+-let nt_whitespace = const (fun ch -> ch <= ' ');;
+-
+-let make_range leq ch1 ch2 (s : char list) =
+-  const (fun ch -> (leq ch1 ch) && (leq ch ch2)) s;;
+-
+-let range = make_range (fun ch1 ch2 -> ch1 <= ch2);;
+-
+-let range_ci =
+-  make_range (fun ch1 ch2 ->
+-	      (lowercase_ascii ch1) <=
+-		(lowercase_ascii ch2));;
+-
+-let nt_any (s : char list) = const (fun ch -> true) s;;
+-
+-let trace_pc desc nt s =
+-  try let ((e, s') as args) = (nt s)
+-      in
+-      (Printf.printf ";;; %s matched the head of \"%s\", and the remaining string is \"%s\"\n"
+-		     desc
+-		     (list_to_string s)
+-		     (list_to_string s') ;
+-       args)
+-  with X_no_match ->
+-    (Printf.printf ";;; %s failed on \"%s\"\n"
+-		   desc
+-		   (list_to_string s) ;
+-     raise X_no_match);;
+-
+-(* testing the parsers *)
+-
+-let test_string nt str =
+-  let (e, s) = (nt (string_to_list str)) in
+-  (e, (Printf.sprintf "->[%s]" (list_to_string s)));;
+-
+-end;; (* end of struct PC *)
+-
+-(* end-of-input *)
+diff --git a/reader-test.ml b/reader-test.ml
+new file mode 100644
+index 0000000..e21395e
+--- /dev/null
++++ b/reader-test.ml
+@@ -0,0 +1,266 @@
++#use "reader.ml";;
++
++let eazy_use = Fun.(SexprParser.sexpr + list_of_string);;
++
++let expect a b =
++  let a' = eazy_use a in
++  let b' = (Option.((fun x -> (x,[])) <$> b)) in
++  if a' = b'
++  then Option.none
++  else Option.some (a,a',b);;
++
++let optionCat: ('a option) list -> 'a list =
++  fun xs -> List.fold_right
++              (fun op l -> match op with Some x -> x::l
++                                       | _ -> l) xs [];;
++let bool_tests =
++  [ "#t", Option.some (Sexpr.bool true)
++  ; "#T", Option.some (Sexpr.bool true)
++  ; "#f", Option.some (Sexpr.bool false)
++  ; "#F", Option.some (Sexpr.bool false)
++  ];;
++
++let simple_char_tests =
++  List.map
++    (fun c -> "#\\" ^ String.make 1 c, Sexpr.char c |> Option.some)
++    [ 'a' ; 'A' ; '?' ; '.' ; '#' ; '\\' ; '%' ; '!' ; '@' ; '$'
++      ; '^' ; '&' ; '*' ; '(' ; ')' ; '-' ; '_' ; '+' ; '=' ];;
++
++let named_char_tests =
++  List.(
++    let (<$>) = map in
++    concat
++      [ (fun s -> s, Sexpr.char '\n' |> Option.some) <$>
++          [ "#\\newline" ; "#\\NeWlInE" ; "#\\NEWLINE" ]
++      ; (fun s -> s, Fun.(Option.some + Sexpr.char + Char.chr) 0) <$>
++          [ "#\\nul" ; "#\\nUl" ; "#\\NUL" ]
++      ]
++  );;
++
++let char_tests = simple_char_tests @ named_char_tests;;
++
++let integer_tests =
++  [ "1", Option.some (Sexpr.number (Number.fraction 1 1))
++  ; "0", Option.some (Sexpr.number (Number.fraction 0 1))
++  ; "00000", Option.some (Sexpr.number (Number.fraction 0 1))
++  ; "+12345", Fun.(Option.some+Sexpr.number+Number.fraction 12345) 1
++  ; "-123", Number.fraction (-123) 1 |> Sexpr.number |> Option.some
++  ];;
++
++let float_tests =
++  let float = Fun.(Option.some+Sexpr.number+Number.float) in
++  [ "1.0", float 1.
++  ; "+1.0", float 1.
++  ; "-1.0", float (-1.)
++  ; "123.456", float 123.456
++  ; "-123.456", float (-123.456)
++  ; "+123.456", float (123.456) ];;
++
++let symbol_float_tests =
++  [ "++123.456", Sexpr.symbol "++123.456" |> Option.some
++  ];;
++
++let fraction_tests =
++  let fractionTest signStr sign =
++    let answer (str, a, b) =
++      signStr ^ str, Number.fraction (sign a) b |> Sexpr.number |> Option.some in
++    List.map answer
++      [ "1/2", 1, 2
++      ; "1/3", 1, 3
++      ; "2/2", 1, 1
++      ; "100/100", 1, 1
++      ; "150/30", 5, 1
++      ; "32/10", 16, 5
++      ; "0/10", 0, 1
++      ] in
++  List.concat
++    [ fractionTest "" (fun x -> x)
++    ; fractionTest "+" (fun x -> x)
++    ; fractionTest "-" (fun x -> -x)
++    ];;
++
++let scientific_tests =
++  let tests ssign fsign =
++    let test (str, f) =
++      (ssign ^ str,
++       Fun.(Option.some + Sexpr.number + Number.float + fsign) f) in
++    List.map
++      test
++      [ "1e2", 1e2
++      ; "1e+2", 1e2
++      ; "1e-2", 1e-2
++      ; "3e0", 3.
++      ; "3e+0", 3.
++      ; "3e-0", 3.
++      ; "23.10e1", 231.
++      ; "23.10e+1", 231.
++      ; "23.10e-1", 2.31
++      ; "23.10e0", 23.10
++      ; "23.10e+0", 23.10
++      ; "23.10e-0", 23.10
++      ] in
++  List.concat
++    [ tests "" Fun.zero
++    ; tests "+" Fun.zero
++    ; tests "-" Float.neg
++    ];;
++
++
++let string_tests =
++  let chars = Array.init 256 Char.chr in
++  let random_char () = Array.get chars (Random.bits () mod 256) in
++  let rec guard cond random () =
++    let x = random () in
++    if cond x
++    then x
++    else guard cond random () in
++  let random_string minlen maxlen () =
++    String.init
++      (minlen + (Random.bits () mod (maxlen-minlen+1)))
++      (fun n -> guard (fun c -> c != '"' && c != '\\') random_char ()) in
++  let border str = "\"" ^ str ^ "\"" in
++  let string = Fun.(Option.some+Sexpr.string) in
++  let random_test random_string () =
++    let str = random_string () in
++    (border str, string str) in
++  let random_test_of_the_small =
++    random_test (random_string 0 20) in
++  let random_test_of_the_large =
++    random_test (random_string 100 1000) in
++  let random_tests n random =
++    List.map random (List.init n (fun _ -> ())) in
++  let hand_craft =
++    [ "\"\"", string ""
++    ; "\" \"", string " "
++    ; "\"a\"", string "a"
++    ; "\"A\"", string "A"
++    ; "\"\n\t\"", string "\n\t"
++    ] in
++  List.concat
++    [ hand_craft
++    ; random_tests 100 random_test_of_the_small
++    ; random_tests 100 random_test_of_the_large
++    ];;
++
++let symbol_tests =
++  let symbol = Fun.(Option.some+Sexpr.symbol) in
++  [ ".", Option.none
++  ; "..", symbol ".."
++  ; "........", symbol "........"
++  ; "+a23das", symbol "+a23das"
++  ; "a", symbol "a"
++  ; "A", symbol "a"
++  ; "-a", symbol "-a"
++  ; "1+2", symbol "1+2"
++  ; "1.2.3", symbol "1.2.3"
++  ; "1/2.3", symbol "1/2.3"
++  ; "1/2/3", symbol "1/2/3"
++  ; "-1+2", symbol "-1+2"
++  ; "?WHAt!", symbol "?what!"
++  ];;
++
++let list_tests =
++  let sexpr_of_list sexpr_of_list =
++    let sexpr_of_list' xs =
++      List.fold_right Sexpr.pair xs Sexpr.nil in
++    Fun.(sexpr_of_list'+List.map sexpr_of_list) in
++  let sexpr_of_list =
++    let sexpr_of_list x = Fun.(sexpr_of_list+sexpr_of_list) x in
++    let sexpr_of_list x = Fun.(sexpr_of_list+sexpr_of_list) x in
++    let sexpr_of_list x = Fun.(sexpr_of_list+sexpr_of_list) x in
++    let sexpr_of_list x = Fun.(sexpr_of_list+sexpr_of_list) x in
++    sexpr_of_list Fun.zero in
++  let list = Fun.(Option.some+sexpr_of_list) in
++  [ "()", list []
++  ; "(())", list [[]]
++  ; "(()()(()))", list [[];[];[[]]]
++  ; "(()()()()()()()()()())", list [[];[];[];[];[];[];[];[];[];[]]
++  ; "((((((((((((()))))))))))))", list [[[[[[[[[[[[[]]]]]]]]]]]]]
++  ];;
++
++let dotted_list_tests =
++  let dotted = List.fold_right Sexpr.pair in
++  [ "(() . ())" , Option.some (dotted [Sexpr.nil] Sexpr.nil)
++  ; "(.())", Option.some (dotted [] Sexpr.nil)
++  ; "(().())", Option.some (dotted [Sexpr.nil] Sexpr.nil)
++  ; "(#f#t#t#f#t#f#t#f#F#F.#t)",
++    Option.some (dotted
++                   (List.map
++                      Sexpr.bool
++                      [ false; true;
++                        true;
++                        false; true;
++                        false; true;
++                        false; false; false
++                      ]
++                   )
++                   (Sexpr.bool true))
++  ];;
++
++let quote_like_tests =
++  let prepare (a,b) =
++    (a, Option.some b) in
++  let test qstr qstr' (sexprstr, sexprres) =
++    (qstr ^ sexprstr,
++     Sexpr.(pair (symbol qstr') (pair sexprres nil))) in
++  let qtest = test "'" "quote" in
++  let qqtest = test "`" "quasiquote" in
++  let utest = test "," "unquote" in
++  let ustest = test ",@" "unquote-splicing" in
++  let tests test =
++    List.map Fun.(prepare+test)
++      [ ("()", Sexpr.nil)
++      ; ("#f", Sexpr.bool false)
++      ] in
++  let quotelike = [ qtest; qqtest; utest; ustest ] in
++  Fun.(List.concat + List.map tests + List.concat)
++    [ quotelike
++    ; List.CP.(Fun.(+) <$> quotelike <*> quotelike)
++    ; List.CP.(Fun.(+) <$>
++                quotelike <*>
++                (Fun.(+) <$> quotelike <*> quotelike))
++    ; List.Zip.(
++      let quotelike = Fun.(+) <$> quotelike <*> quotelike in
++      Fun.(+) <$> quotelike <*> quotelike
++      )
++    ];;
++
++let negative_tests =
++  [ "", Option.none
++  ; "#\\ ", Option.none ];;
++
++let skipable_tests =
++  [ "  \t\n;123\n 7 ;dsfsd dsf", Option.some (Sexpr.number (Number.fraction 7 1)) ];;  
++
++let failures_of tests =
++  Fun.(
++    optionCat + List.map (fun (a,b) -> expect a b)
++  ) tests;;
++
++let failures =
++  let tests =
++    List.concat
++      [ bool_tests
++      ; char_tests
++      ; integer_tests
++      ; float_tests
++      ; symbol_float_tests
++      ; fraction_tests
++      ; scientific_tests
++      ; negative_tests
++      ; skipable_tests
++      ; string_tests
++      ; symbol_tests
++      ; list_tests
++      ; dotted_list_tests
++      ; quote_like_tests
++      ]
++  in
++  failures_of tests;;
++
++
++
++
++
++
++
+diff --git a/reader.ml b/reader.ml
+index 32445c2..1e6e0bb 100644
+--- a/reader.ml
++++ b/reader.ml
+@@ -1,13 +1,18 @@
++#use "parsing_combinators.ml";;
+ 
+-#use "pc.ml";;
+-
++module PC = struct exception X_no_match end;;
+ exception X_not_yet_implemented;;
+ exception X_this_should_not_happen;;
+   
+ type number =
+   | Fraction of int * int
+   | Float of float;;
+-  
++
++module Number = struct
++  let fraction i d = Fraction (i,d);;
++  let float f = Float f;;
++end;;
++
+ type sexpr =
+   | Bool of bool
+   | Nil
+@@ -17,30 +22,261 @@ type sexpr =
+   | Symbol of string
+   | Pair of sexpr * sexpr;;
+ 
+-let rec sexpr_eq s1 s2 =
+-  match s1, s2 with
+-  | Bool(b1), Bool(b2) -> b1 = b2
+-  | Nil, Nil -> true
+-  | Number(Float f1), Number(Float f2) -> abs_float(f1 -. f2) < 0.001
+-  | Number(Fraction (n1, d1)), Number(Fraction (n2, d2)) -> n1 = n2 && d1 = d2
+-  | Char(c1), Char(c2) -> c1 = c2
+-  | String(s1), String(s2) -> s1 = s2
+-  | Symbol(s1), Symbol(s2) -> s1 = s2
+-  | Pair(car1, cdr1), Pair(car2, cdr2) -> (sexpr_eq car1 car2) && (sexpr_eq cdr1 cdr2)
+-  | _ -> false;;
+-
+-module Reader: sig
+-  val read_sexprs : string -> sexpr list
+-end
+-= struct
+-let normalize_scheme_symbol str =
+-  let s = string_to_list str in
+-  if (andmap
+-	(fun ch -> (ch = (lowercase_ascii ch)))
+-	s) then str
+-  else Printf.sprintf "|%s|" str;;
++module Sexpr = struct
++  let bool b = Bool b;;
++  let nil = Nil;;
++  let number n = Number n;;
++  let char c = Char c;;
++  let string s = String s;;
++  let symbol s = Symbol s;;
++  let pair p1 p2 = Pair (p1, p2);;
++end;;
++
++let string_of_list xs =
++  String.init (List.length xs) (List.nth xs);;
++
++let list_of_string str =
++  let rec foldr i f str v =
++    if i < 0 then v
++    else foldr (i-1) f str (f (String.get str i) v) in
++  foldr (String.length str - 1) List.cons str [];;
++
++module SexprParser: sig val sexpr: (char, sexpr) parser end = struct
++  let quote_like sexpr form name cs =
++    Parser.(
++      (fun se -> Sexpr.(pair (symbol name) (pair se nil))) <$>
++        (form *> sexpr)
++    ) cs
++  
++  let char_range: char -> char -> (char, char) parser =
++    fun c1 c2 cs ->
++    Parser.(
++      range (fun c1 c2 -> Char.code c1 <= Char.code c2) c1 c2
++    ) cs;;
++  
++  let ci_char: char -> (char, char) parser =
++    fun c ->
++    Parser.(
++      parse_by ((Fun.on (=) Char.lowercase_ascii) c)
++    );;
++
++  let ci_chars: char list -> (char, char list) parser =
++    Parser.(
++      Fun.(sequence + List.map ci_char)
++    );;
++
++  let reduce_fraction (a,b) =
++    let rec gcd a b =
++      match a,b with
++      | 0,n | n,0 -> n
++      | a,b when a <= b -> gcd (b-a) a
++      | a,b -> gcd b a in
++    let a',b' = abs a, abs b in
++    let gcd = gcd a' b' in
++    (a/gcd), (b/gcd);;
++
++  let rec sexpr: (char, sexpr) parser =
++    fun cs ->
++    Parser.(
++      skipable *>
++        one_of
++          [ boolean; char; symbol; number; string;
++            list; dotted_list; quoted; quasi_quoted;
++            unquoted; unquote_and_spliced ] <*
++        skipable
++    ) cs
++
++  and line_comment: (char, unit) parser =
++    fun cs ->
++    Parser.(
++      let new_line = element '\n' in
++      element ';' *>
++        star (any -- new_line) *>
++          (new_line <|> must_end (pure '\n')) *>
++            pure ()
++    ) cs
++
++  and sexpr_comment: (char, unit) parser =
++    fun cs ->
++    Parser.(
++      elements ['#';';'] *> sexpr *> pure ()
++    ) cs
++
+ 
++  and skipable: (char, unit) parser =
++    fun cs ->
++    Parser.(
++      star (one_of [ parse_by (fun c -> Char.code c <= 32) *> pure ()
++                   ; line_comment
++                   ; sexpr_comment ]) *> pure ()
++    ) cs
+ 
+-let read_sexprs string = raise X_not_yet_implemented;;
++  and boolean: (char, sexpr) parser = 
++    Parser.(
++      Sexpr.bool <$>
++        ((ci_chars ['#';'f'] *> pure false) <|>
++           (ci_chars ['#';'t'] *> pure true))
++    )
++
++  and char: (char, sexpr) parser =
++    Parser.(
++      Sexpr.char <$>
++        (elements ['#';'\\'] *>
++           ((one_of
++               (List.map
++                  (fun (w,c) -> ci_chars w *> pure (Char.chr c))
++                  [(['n';'e';'w';'l';'i';'n';'e'],10)
++                  ;(['n';'u';'l'],0)
++                  ;(['p';'a';'g';'e'],12)
++                  ;(['r';'e';'t';'u';'r';'n'],13)
++                  ;(['s';'p';'a';'c';'e'],32)
++                  ;(['t';'a';'b'],9)])) <|>
++              (parse_by (fun c -> Char.code c > 32))))
++    )
++
++  and number: (char, sexpr) parser =
++    Parser.(
++      let digit =
++        let int_of_digit c = Char.code c - Char.code '0' in
++        int_of_digit <$>
++          char_range '0' '9' in
++      let digits = Parser.(plus digit) in
++      let fractional =
++        List.fold_right (fun d f -> (float_of_int d +. f) /. 10.) <$>
++          digits <*> pure 0. in
++      let natural =
++        List.fold_left (fun n d -> n*10+d) <$> digit <*> star digit in
++      let signed negate num =
++        let prefix =
++          one_of [ element '+' *> pure (fun x -> x)
++                 ; element '-' *> pure negate
++                 ; pure (fun x -> x) ] in
++        prefix <*> num in
++      let float =
++        signed Float.neg
++          ((+.) <$>
++             (float_of_int <$> natural <* element '.') <*>
++             fractional) in
++      let integer x = signed Int.neg natural x in
++      let scientific =
++        let ( * ) a b = a *. b in
++        (fun b p -> b * (10. ** p)) <$>
++          (float <|> (float_of_int <$> integer)) <* ci_char 'e' <*>
++          (float_of_int <$> integer) in
++      let pair a b = a,b in
++      let cons_fraction (a,b) = Number.fraction a b in
++      Sexpr.number <$>
++        (one_of
++           [ Number.float <$> (scientific <|> float)
++           ; Fun.(cons_fraction + reduce_fraction) <$>
++               (pair <$> integer <* element '/' <*> natural)
++           ; Number.fraction <$> integer <*> pure 1 ])
++    )
++
++  and string: (char, sexpr) parser =
++    Parser.(
++      let literal =
++        parse_by (fun c -> c != '"' && c != '\\') in
++      let meta =
++        element '\\' *>
++          one_of
++            [ element '\\'
++            ; element '"'
++            ; element 't' *> pure '\t'
++            ; element 'f' *> pure (Char.chr 12)
++            ; element 'n' *> pure '\n'
++            ; element 'r' *> pure (Char.chr 13) ] in
++      Fun.(Sexpr.string + string_of_list) <$>
++        (element '"' *> star (meta <|> literal) <* element '"')
++    )
++
++  and symbol: (char, sexpr) parser =
++    Parser.(
++      fun xs ->
++      let symbol_of_list cs =
++        Sexpr.symbol (String.lowercase_ascii (string_of_list cs)) in 
++      (symbol_of_list <$>
++         (guard (function ['.'] -> false
++                        | xs -> Option.is_none (must_end number xs))
++            (plus @@
++               one_of
++                 [ char_range 'a' 'z'
++                 ; char_range 'A' 'Z'
++                 ; char_range '0' '9'
++                 ; one_of
++                     (List.map element (list_of_string "!$^*-_=+<>/?"))
++                 ; element '.' ]))) xs
++    )
++
++  and braced: (char, 'a) parser -> (char, 'a) parser =
++    fun p cs ->
++    Parser.(
++      element '(' *> p <* element ')'
++    ) cs
++
++  and list: (char, sexpr) parser =
++    fun cs ->
++    Parser.(
++      let sexprs =
++        List.fold_right
++          Sexpr.pair <$>
++          star sexpr <*>
++          pure Sexpr.nil in
++      braced sexprs
++    ) cs
++
++  and dotted_list: (char, sexpr) parser =
++    fun cs ->
++    Parser.(
++      let sexprs =
++        List.fold_right
++          Sexpr.pair <$>
++          star sexpr <*>
++          (element '.' *> sexpr) in
++      braced sexprs
++    ) cs
++
++  and quoted: (char, sexpr) parser =
++    fun cs ->
++    Parser.(
++      quote_like sexpr (element '\'') "quote"
++    ) cs
++
++  and quasi_quoted: (char, sexpr) parser =
++    fun cs ->
++    Parser.(
++      quote_like sexpr (element '`') "quasiquote"
++    ) cs
++
++  and unquoted: (char, sexpr) parser =
++    fun cs ->
++    Parser.(
++      quote_like sexpr (element ',') "unquote"
++    ) cs
++
++  and unquote_and_spliced: (char, sexpr) parser =
++    fun cs ->
++    Parser.(
++      quote_like sexpr (elements [',';'@']) "unquote-splicing"
++    ) cs;;
++end;;
++
++module type Reader = sig
++  val read_sexprs : string -> sexpr list
++end;;
++
++module Reader: Reader = struct
++  let exception_of_none x = match x with None -> raise PC.X_no_match
++                                       | Some x -> x;;
++  
++  let read_sexprs =
++    Fun.(
++      exception_of_none +
++      Option.(<$>) fst +
++      ( Parser.must_end +
++        Parser.star
++      ) SexprParser.sexpr +
++      list_of_string      
++    );;
+   
+ end;; (* struct Reader *)
+diff --git a/readme.txt b/readme.txt
+index e69de29..c3c9f16 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1,4 @@
++I (Aviel Berezin 318174711) assert that the work I submitted is 100% my own.
++I have not recived any part from any other student in the class, nor have I give parts of it for use to others.
++Nor have I used code from other sources: Courses taught previously at this university, courses taught at other universities, various bits of code found on the Internet, etc.
++I realize that should our code be found to contain code from other sources, that a formal case shall be opened against me with va'adat mishma'at, in pursuit of disciplinary action.
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..87acd97 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -21,43 +21,6 @@ type expr' =
+   | Applic' of expr' * (expr' list)
+   | ApplicTP' of expr' * (expr' list);;
+ 
+-let rec expr'_eq e1 e2 =
+-  match e1, e2 with
+-  | Const' Void, Const' Void -> true
+-  | Const'(Sexpr s1), Const'(Sexpr s2) -> sexpr_eq s1 s2
+-  | Var'(VarFree v1), Var'(VarFree v2) -> String.equal v1 v2
+-  | Var'(VarParam (v1,mn1)), Var'(VarParam (v2,mn2)) -> String.equal v1 v2 && mn1 = mn2
+-  | Var'(VarBound (v1,mj1,mn1)), Var'(VarBound (v2,mj2,mn2)) -> String.equal v1 v2 && mj1 = mj2  && mn1 = mn2
+-  | Box'(VarFree v1), Box'(VarFree v2) -> String.equal v1 v2
+-  | Box'(VarParam (v1,mn1)), Box'(VarParam (v2,mn2)) -> String.equal v1 v2 && mn1 = mn2
+-  | Box'(VarBound (v1,mj1,mn1)), Box'(VarBound (v2,mj2,mn2)) -> String.equal v1 v2 && mj1 = mj2  && mn1 = mn2
+-  | BoxGet'(VarFree v1), BoxGet'(VarFree v2) -> String.equal v1 v2
+-  | BoxGet'(VarParam (v1,mn1)), BoxGet'(VarParam (v2,mn2)) -> String.equal v1 v2 && mn1 = mn2
+-  | BoxGet'(VarBound (v1,mj1,mn1)), BoxGet'(VarBound (v2,mj2,mn2)) -> String.equal v1 v2 && mj1 = mj2  && mn1 = mn2
+-  | BoxSet'(VarFree v1,e1), BoxSet'(VarFree v2, e2) -> String.equal v1 v2 && (expr'_eq e1 e2)
+-  | BoxSet'(VarParam (v1,mn1), e1), BoxSet'(VarParam (v2,mn2),e2) -> String.equal v1 v2 && mn1 = mn2 && (expr'_eq e1 e2)
+-  | BoxSet'(VarBound (v1,mj1,mn1),e1), BoxSet'(VarBound (v2,mj2,mn2),e2) -> String.equal v1 v2 && mj1 = mj2  && mn1 = mn2 && (expr'_eq e1 e2)
+-  | If'(t1, th1, el1), If'(t2, th2, el2) -> (expr'_eq t1 t2) &&
+-                                            (expr'_eq th1 th2) &&
+-                                              (expr'_eq el1 el2)
+-  | (Seq'(l1), Seq'(l2)
+-  | Or'(l1), Or'(l2)) -> List.for_all2 expr'_eq l1 l2
+-  | (Set'(var1, val1), Set'(var2, val2)
+-  | Def'(var1, val1), Def'(var2, val2)) -> (expr'_eq (Var'(var1)) (Var'(var2))) &&
+-                                             (expr'_eq val1 val2)
+-  | LambdaSimple'(vars1, body1), LambdaSimple'(vars2, body2) ->
+-     (List.for_all2 String.equal vars1 vars2) &&
+-       (expr'_eq body1 body2)
+-  | LambdaOpt'(vars1, var1, body1), LambdaOpt'(vars2, var2, body2) ->
+-     (String.equal var1 var2) &&
+-       (List.for_all2 String.equal vars1 vars2) &&
+-         (expr'_eq body1 body2)
+-  | Applic'(e1, args1), Applic'(e2, args2)
+-  | ApplicTP'(e1, args1), ApplicTP'(e2, args2) ->
+-	 (expr'_eq e1 e2) &&
+-	   (List.for_all2 expr'_eq args1 args2)
+-  | _ -> false;;	
+-                      
+ exception X_syntax_error;;
+ 
+ module type SEMANTICS = sig
+@@ -69,17 +32,320 @@ end;;
+ 
+ module Semantics : SEMANTICS = struct
+ 
+-let annotate_lexical_addresses e = raise X_not_yet_implemented;;
+-
+-let annotate_tail_calls e = raise X_not_yet_implemented;;
++  let annotate_lexical_addresses =
++    let option : 'a -> 'a option -> 'a =
++      fun zero ->
++      function None -> zero | Some x -> x
++    in
++    let advance : string list -> (string -> var) -> (string -> var) =
++      fun params annotate ->
++      let params = List.((fun (x,y) -> (y,x)) <$> (pair_with Int.succ 0 params)) in
++      fun name ->
++      option
++        (match annotate name with
++         | VarFree _ as vf -> vf
++         | VarParam (name, i) -> VarBound (name, 0, i)
++         | VarBound (name, major, maynor) -> VarBound (name, major+1, maynor))
++        Option.((fun i -> VarParam (name, i)) <$> (List.assoc_opt name params))
++    in
++    let rec aux : (string -> var) -> expr -> expr' =
++      fun annotate ->
++      function
++      | Const c -> Const' c
++      | If (cond, thn, els) -> If' ( aux annotate cond
++                                   , aux annotate thn
++                                   , aux annotate els )
++      | Seq (exprs) -> Seq' List.(aux annotate <$> exprs)
++      | Or (exprs) -> Or' List.(aux annotate <$> exprs)
++      | Applic (f, xs) -> Applic' (aux annotate f, List.(aux annotate <$> xs))
++      | Var name -> Var' (annotate name)
++      | Set (Var name, value) -> Set' (annotate name, aux annotate value)
++      | Def (Var name, value) -> Def' (annotate name, aux annotate value)
++      | LambdaSimple (params, body) ->
++         LambdaSimple' (params, aux (advance params annotate) body)
++      | LambdaOpt (params, optparam, body) ->
++         LambdaOpt' (params, optparam, aux (advance (params @ [optparam]) annotate) body)
++      | Set (_, _) | Def (_,_) -> raise X_syntax_error (* TODO: it hurts *)
++    in
++    aux (fun x -> VarFree x);;
++  
++  let annotate_tail_calls =
++    let rec aux : bool -> expr' -> expr' =
++      fun in_tp ->
++      function
++      | Applic' (f, xs) ->
++         let f = aux false f in
++         let xs = List.(aux false <$> xs) in
++         if in_tp then ApplicTP' (f, xs)
++         else Applic' (f, xs)
++      | If' (tst, thn, els) ->
++         If' (aux false tst, aux in_tp thn, aux in_tp els)
++      | Seq' exprs ->
++         Seq' (init_all_inherit_last in_tp exprs)
++      | Set' (id, value) -> Set' (id, aux false value)
++      | Def' (id, value) -> Def' (id, aux false value)
++      | BoxSet' (id, value) -> BoxSet' (id, aux false value)
++      | Or' exprs ->
++         Or' (init_all_inherit_last in_tp exprs)
++      | LambdaSimple' (params, body) ->
++         LambdaSimple' (params, aux true body)
++      | LambdaOpt' (params, param, body) ->
++         LambdaOpt' (params, param, aux true body)
++      | x -> x
++    and init_all_inherit_last : bool -> expr' list -> expr' list =
++      fun in_tp ->
++      function
++      | [x] -> [aux in_tp x]
++      | [] -> []
++      | x::xs -> aux false x :: init_all_inherit_last in_tp xs
++    in
++    aux false;;
+ 
+-let box_set e = raise X_not_yet_implemented;;
+ 
+-let run_semantics expr =
+-  box_set
+-    (annotate_tail_calls
+-       (annotate_lexical_addresses expr));;
+   
+-end;; (* struct Semantics *)
++  let rec has_read : string -> expr' -> bool =
++    fun name ->
++    function      
++    | Var' (VarParam (n,_) | VarBound (n,_,_)) when n = name ->
++       true
++    | If' (expr1, expr2, expr3) ->
++       false
++       || has_read name expr1
++       || has_read name expr2
++       || has_read name expr3
++    | Seq' exprs | Or' exprs ->
++       List.exists (has_read name) exprs
++    | Set' (_,expr) | Def' (_,expr) | BoxSet' (_, expr) ->
++       has_read name expr
++    | Applic' (f, xs) | ApplicTP' (f, xs) ->
++       List.exists (has_read name) (f::xs)
++    | _ -> false;;
++      
++  let rec has_write : string -> expr' -> bool =
++    fun name ->
++    function
++    | Set' ((VarParam (n,_) | VarBound (n,_,_)), value)
++         when n = name -> true
++    | Set' (_,expr) | Def' (_,expr) | BoxSet' (_, expr) ->
++       has_write name expr
++    | If' (tst, thn, els) ->
++       false
++       || has_write name tst
++       || has_write name thn
++       || has_write name els
++    | Seq' exprs | Or' exprs ->
++       List.exists (has_write name) exprs
++    | Applic' (f, xs) | ApplicTP' (f, xs) ->
++       List.exists (has_write name) (f::xs)
++    | _ -> false;;
++  
++  let rec has_delayed_read : string -> expr' -> bool =
++    fun name ->
++    function
++    | BoxSet' (_, expr) | Set' (_, expr) | Def' (_, expr) ->
++       has_delayed_read name expr
++    | If' (expr1, expr2, expr3) ->
++       false
++       || has_delayed_read name expr1
++       || has_delayed_read name expr2
++       || has_delayed_read name expr3
++    | Seq' exprs | Or' exprs ->
++       List.exists (has_delayed_read name) exprs
++    | Applic' (f,xs) | ApplicTP' (f,xs) ->
++       List.exists (has_delayed_read name) (f::xs)
++    | LambdaSimple' (ps, expr) ->
++       true
++       && not (List.mem name ps)
++       && (false
++           || has_read name expr
++           || has_delayed_read name expr)
++    | LambdaOpt' (ps, p, expr) ->
++       true
++       && not (List.mem name (p::ps))
++       && (false
++           || has_read name expr
++           || has_delayed_read name expr)
++    | _ -> false;;
+ 
++  let rec has_delayed_write : string -> expr' -> bool =
++    fun name ->
++    function
++    | BoxSet' (_, expr) | Set' (_, expr) | Def' (_, expr) ->
++       has_delayed_write name expr
++    | If' (expr1, expr2, expr3) ->
++       false
++       || has_delayed_write name expr1
++       || has_delayed_write name expr2
++       || has_delayed_write name expr3
++    | Seq' exprs | Or' exprs ->
++       List.exists (has_delayed_write name) exprs
++    | Applic' (f, xs) | ApplicTP' (f, xs) ->
++       List.exists (has_delayed_write name) (f::xs)
++    | LambdaSimple' (ps, expr) ->
++       true
++       && not (List.mem name ps)
++       && (false
++           || has_write name expr
++           || has_delayed_write name expr)
++    | LambdaOpt' (ps, p, expr) ->
++       true
++       && not (List.mem name (p::ps))
++       && (false
++           || has_write name expr
++           || has_delayed_write name expr)
++    | _ -> false;;
+ 
++  let rec should_box : string -> expr' -> bool =
++    fun name ->
++    let should_box expr = should_box name expr in
++    let has_read = has_read name in
++    let has_write = has_write name in
++    let has_delayed_read = has_delayed_read name in
++    let has_delayed_write = has_delayed_write name in
++
++    function
++    | BoxSet' (_, expr) | Def' (_, expr) | Set' (_, expr) ->
++       should_box expr
++    | If' (tst, thn, els) ->
++       let tst_dr = has_delayed_read tst in
++       let tst_dw = has_delayed_write tst in
++       let thn_dw = has_delayed_write thn in
++       let thn_dr = has_delayed_read thn in
++       let els_dw = has_delayed_write els in
++       let els_dr = has_delayed_read els in
++       let dr_dw = tst_dr && (thn_dw || els_dw) in
++       let dw_dr = tst_dw && (thn_dr || els_dr) in
++       false
++       || dr_dw || dw_dr
++       || should_box tst || should_box thn || should_box els
++    | Seq' exprs | Or' exprs ->
++       let dr_dw : expr' list -> bool =
++         fun exprs ->
++         let dr_dw =
++           let open List in
++           combine
++             (has_delayed_read <$> exprs)
++             (has_delayed_write <$> exprs)
++         in
++         let rec disjoint_both =
++           function
++           | (a,b) :: xs ->
++              false
++              || (a && List.exists snd xs)
++              || (b && List.exists fst xs)
++              || disjoint_both xs
++           | [] -> false
++         in
++         disjoint_both dr_dw
++       in
++       let rec fst_before_snd : (bool * bool) list -> bool =
++         function
++         | (dr,_) :: xs when dr ->
++            List.exists snd xs
++         | _ :: xs -> fst_before_snd xs
++         | [] -> false
++       in
++       let dx_y : (expr' -> bool) -> (expr' -> bool) ->
++                  expr' list -> bool =
++         fun has_delayed has exprs ->
++         let open List in
++         fst_before_snd
++           (combine
++              (has_delayed <$> exprs)
++              (has <$> exprs))
++       in
++       let dr_w = dx_y has_delayed_read has_write in
++       let dw_r = dx_y has_delayed_write has_read in
++       false
++       || dr_dw exprs || dr_w exprs || dw_r exprs
++       || List.exists should_box exprs
++    | Applic' (f,xs) | ApplicTP' (f, xs) ->
++       let exprs = (f::xs) in
++       let hdr = List.exists has_delayed_read exprs in
++       let hdw = List.exists has_delayed_write exprs in
++       let hr = List.exists has_read exprs in
++       let hw = List.exists has_write exprs in
++       false
++       || (hdr && hdw)
++       || (hdr && hw)
++       || (hr && hdw)
++       || List.exists should_box exprs
++    | _ -> false;;
++      
++  let rec replace : string -> expr' -> expr' =
++    fun name ->
++    let replace expr = replace name expr in
++    function
++    | Var' ((VarParam (n,_) | VarBound (n,_,_)) as v)
++         when n = name -> BoxGet' v
++    | Var' v -> Var' v
++    | Set' (((VarParam (n,_) | VarBound (n,_,_)) as v), value)
++         when n = name ->
++       BoxSet' (v, replace value)
++    | Set' (v, value) -> Set' (v, replace value)
++    | LambdaSimple' (ps, body) ->
++       let body =
++         if List.mem name ps
++         then body
++         else replace body
++       in
++       LambdaSimple' (ps, body)
++    | LambdaOpt' (ps,p,body) ->
++       let body =
++         if List.mem name ps || name = p
++         then body
++         else replace body
++       in
++       LambdaOpt' (ps,p,body)
++    | BoxSet' (v, expr) -> BoxSet' (v, replace expr)
++    | Def' (v, expr) -> Def' (v, replace expr)
++    | If' (expr1, expr2, expr3) ->
++       If' (replace expr1, replace expr2, replace expr3)
++    | Seq' exprs -> Seq' List.(replace <$> exprs)
++    | Or' exprs -> Or' List.(replace <$> exprs)
++    | Applic' (f, xs) -> Applic' (replace f, List.(replace <$> xs))
++    | ApplicTP' (f, xs) -> ApplicTP' (replace f, List.(replace <$> xs))
++    | x -> x;;
++  
++  let apply_box : int -> string -> expr' -> expr' =
++    fun pos name ->
++    let open Fun in
++    (fun exprs -> Seq' exprs)
++    + (let v = VarParam (name, pos) in
++       List.cons (Set' (v, Box' (v))))
++    + List.(<$>) (replace name)
++    + (function Seq' exprs -> exprs | expr -> [expr]);;
++  
++  let box_single : int -> string -> expr' -> expr' =
++    fun pos param body ->
++    if should_box param body
++    then apply_box pos param body
++    else body;;
++  
++  let box : string list -> expr' -> expr' =
++    fun params body ->
++    List.fold_right
++      (Fun.uncurry box_single)
++      (List.pair_with Int.succ 0 params)
++      body;;
++  
++  let rec box_set =
++    function
++    | BoxSet' (v,expr) -> BoxSet' (v, box_set expr)
++    | Set' (v,expr) -> Set' (v, box_set expr)
++    | Def' (v,expr) -> Def' (v, box_set expr)
++    | If' (expr1, expr2, expr3) ->
++       If' (box_set expr1, box_set expr2, box_set expr3)
++    | Seq' exprs -> Seq' List.(box_set <$> exprs)
++    | Or' exprs -> Or' List.(box_set <$> exprs)
++    | LambdaSimple' (ps, body) ->
++       LambdaSimple' (ps, box_set (box ps body))
++    | LambdaOpt' (ps, p, body) ->
++       LambdaOpt' (ps, p, box_set (box (ps @ [p]) body))
++    | x -> x ;;
++
++  let run_semantics =
++    let open Fun in
++    box_set + annotate_tail_calls + annotate_lexical_addresses;;
++  
++end;;
+diff --git a/tag-parse-test.ml b/tag-parse-test.ml
+new file mode 100644
+index 0000000..7f7c682
+--- /dev/null
++++ b/tag-parse-test.ml
+@@ -0,0 +1,59 @@
++#use "tag-parser.ml";;
++
++let eazy_use =
++  let open Fun in
++  zero +
++    (Option.(=<<) TParse.expr) +
++    (Option.(<$>) fst) + SexprParser.sexpr + list_of_string;;
++                                                            
++let expect a b =
++  let a' = eazy_use a in
++  if a' = b
++  then Option.none
++  else Option.some (a,a',b);;
++
++let optionCat: ('a option) list -> 'a list =
++  fun xs -> List.fold_right
++              (fun op l -> match op with Some x -> x::l
++                                       | _ -> l) xs [];;  
++
++let failures_of tests =
++  Fun.(optionCat ++ List.map + Fun.uncurry) expect tests;;
++
++let constant_tests =
++  [ "#t",
++    Fun.(
++      zero +
++        Option.some +
++        Expr.const +
++        Constant.sexpr +
++        Sexpr.bool
++    ) true
++  ; "1",
++    Fun.(
++      zero +
++        Option.some +
++        Expr.const +
++        Constant.sexpr +
++        Sexpr.number ++
++        Number.fraction
++    ) 1 1
++  ; "#\\a",
++    Fun.(
++      zero +
++        Option.some +
++        Expr.const +
++        Constant.sexpr +
++        Sexpr.char
++    ) 'a'
++  ];;
++
++
++
++let tests =
++  List.concat
++    [ constant_tests
++    ];;
++
++let failures =
++  failures_of tests;;
+diff --git a/tag-parser.ml b/tag-parser.ml
+index 138249e..50abea9 100644
+--- a/tag-parser.ml
++++ b/tag-parser.ml
+@@ -2,7 +2,13 @@
+ 
+ type constant =
+   | Sexpr of sexpr
+-  | Void
++  | Void;;
++
++module Constant = struct
++  let sexpr s = Sexpr s;;
++  let void = Void;;
++end;;
++
+ 
+ type expr =
+   | Const of constant
+@@ -16,32 +22,584 @@ type expr =
+   | LambdaOpt of string list * string * expr
+   | Applic of expr * (expr list);;
+ 
+-let rec expr_eq e1 e2 =
+-  match e1, e2 with
+-  | Const Void, Const Void -> true
+-  | Const(Sexpr s1), Const(Sexpr s2) -> sexpr_eq s1 s2
+-  | Var(v1), Var(v2) -> String.equal v1 v2
+-  | If(t1, th1, el1), If(t2, th2, el2) -> (expr_eq t1 t2) &&
+-                                            (expr_eq th1 th2) &&
+-                                              (expr_eq el1 el2)
+-  | (Seq(l1), Seq(l2)
+-    | Or(l1), Or(l2)) -> List.for_all2 expr_eq l1 l2
+-  | (Set(var1, val1), Set(var2, val2)
+-    | Def(var1, val1), Def(var2, val2)) -> (expr_eq var1 var2) &&
+-                                             (expr_eq val1 val2)
+-  | LambdaSimple(vars1, body1), LambdaSimple(vars2, body2) ->
+-     (List.for_all2 String.equal vars1 vars2) &&
+-       (expr_eq body1 body2)
+-  | LambdaOpt(vars1, var1, body1), LambdaOpt(vars2, var2, body2) ->
+-     (String.equal var1 var2) &&
+-       (List.for_all2 String.equal vars1 vars2) &&
+-         (expr_eq body1 body2)
+-  | Applic(e1, args1), Applic(e2, args2) ->
+-     (expr_eq e1 e2) &&
+-       (List.for_all2 expr_eq args1 args2)
+-  | _ -> false;;
+-	
+-                       
++module Expr = struct
++  let const c = Const c;;
++  let var s = Var s;;
++  let if' cond thn els = If (cond, thn, els);;
++  let seq exprs = Seq exprs;;
++  let set s e = Set (Var s,e);;
++  let def s e = Def (Var s,e);;
++  let or' es = Or es;;
++  let lambda_simple ss e = LambdaSimple (ss,e);;
++  let lambda_opt ss s e = LambdaOpt (ss,s,e);;
++  let applic e es = Applic (e,es);;
++end;;
++
++type t_parser = sexpr -> expr option;;
++
++module TParser = struct
++  type t = t_parser;;
++  let zero : t_parser =
++    fun _ -> Option.none;;
++  let (+) : t_parser -> t_parser -> t_parser =
++    fun tp1 tp2 sexpr ->
++    let open Option in
++    tp1 sexpr <|> tp2 sexpr;;
++end;;
++
++
++module Macro = struct
++  let string_of_symbol : sexpr -> string option =
++    fun se ->
++    match se with
++    | Symbol str -> Option.some str
++    | _ -> Option.none;;
++  
++  let rec list_of_sexpr : sexpr -> sexpr list option =
++    fun se ->
++    let open Option in
++    match se with
++    | Pair (a, b) -> List.cons a <$> list_of_sexpr b
++    | Nil -> pure []
++    | _ -> none;;
++  
++  let rec dotted_of_sexpr : sexpr -> (sexpr list * sexpr) option =
++    fun se ->
++    let open Option in
++    match se with
++    | Pair (se, r) ->
++       let open Option in
++       (fun (ses,l) -> (se :: ses, l)) <$> dotted_of_sexpr r
++    | Nil -> none
++    | se -> pure ([], se);;
++  
++  let mit_def_expand : sexpr -> sexpr option =
++    function
++    | Pair ( Symbol "define"
++           , Pair ( Pair ( fun' , args )
++                  , body ) ) ->
++       Option.some
++         ( Pair ( Symbol "define"
++                , Pair ( fun'
++                       , Pair ( Pair ( Symbol "lambda"
++                                     , Pair ( args , body ) )
++                              , Nil ) ) ) )
++    | _ -> Option.none;;
++  
++  let defs : sexpr -> (sexpr list * sexpr list) option =
++    let open Fun in
++    zero
++    + Option.(<$>) List.unzip
++    + Option.(=<<)
++        (zero
++         + Option.sequence
++         + List.(<$>)
++             (Option.(=<<) List.pair_of_list + list_of_sexpr))
++    + list_of_sexpr;;
++  
++  let rec sexpr_of_list_with : sexpr list -> sexpr -> sexpr =
++    fun xs finish ->
++    match xs with
++    | x :: xs -> Pair ( x , sexpr_of_list_with xs finish )
++    | [] -> finish;;
++  
++  let sexpr_of_list : sexpr list -> sexpr =
++    Fun.flip sexpr_of_list_with Nil;;
++  
++  let lambda : sexpr -> sexpr -> sexpr =
++    fun args body ->
++    sexpr_of_list_with
++      [ Symbol "lambda" ; args ]
++      body;;
++
++  let applic : sexpr -> sexpr list -> sexpr =
++    fun f args ->
++    Sexpr.pair f (sexpr_of_list args);;
++  
++  let sexpr_let : sexpr -> sexpr -> sexpr =
++    fun bindings body ->
++    sexpr_of_list_with
++      [ Symbol "let" ; bindings ]
++      body;;
++  
++end;;
++
++module TParse = struct
++  let rec line_seq : expr list -> expr list =
++    function
++    | [] -> []
++    | Seq xs1 :: xs2 -> line_seq xs1 @ line_seq xs2
++    | x :: xs -> x :: line_seq xs;;
++  
++  let explicit_seq : expr list -> expr =
++    let f =
++      function
++      | [x] -> x
++      | [] -> Expr.const Constant.void
++      | xs -> Expr.seq xs
++    in
++    let open Fun in
++    f + line_seq;;
++  
++  let implicit_seq : expr list -> expr option =
++    let f =
++      function
++      | [x] -> Option.some x
++      | [] -> Option.none
++      | xs -> Option.some (Expr.seq xs)
++    in
++    let open Fun in
++    f + line_seq;;
++
++  
++  type rib =
++    | CommonRib of expr * expr list
++    | ArrowRib of expr * expr
++    | ElseRib of expr list;;
++  
++  module Rib = struct
++    let common_rib expr exprs = CommonRib (expr, exprs);;
++    let arrow_rib expr exprf = ArrowRib (expr, exprf);;
++    let else_rib exprs = ElseRib exprs;;
++  end;;
++  
++  let ribs_of_cond : sexpr -> sexpr option =
++    function
++    | Pair ( Symbol "cond" , ribs ) ->
++       Option.some ribs
++    | _ -> Option.none;;
++  
++  let rib_of_sexprs : t_parser -> sexpr list -> rib option =
++    fun expr ->
++    let open Rib in
++    function
++    | test :: Symbol "=>" :: f :: [] ->
++       let open Option in
++       arrow_rib <$> expr test <*> expr f
++    | Symbol "else" :: elses ->
++       let open Option in
++       else_rib
++       <$> sequence List.(expr <$> elses)
++    | test :: results ->
++       let open Option in
++       common_rib
++       <$> expr test
++       <*> sequence List.(expr <$> results)
++    | [] -> Option.none;;
++  
++  let ribs_of_sexpr : t_parser -> sexpr -> rib list option =
++    fun expr ->
++    let rib_of_sexprs = rib_of_sexprs expr in
++    let open Fun in
++    (zero
++     + Option.(=<<)
++         (zero
++          + Option.sequence
++          + List.(<$>)
++              (Option.(=<<) rib_of_sexprs + Macro.list_of_sexpr))
++     + Macro.list_of_sexpr
++    );;
++    
++  let rec expr_of_ribs : t_parser -> rib list -> expr option =
++    fun expr ->
++    function
++    | CommonRib (test, results) :: ribs ->
++       let open Option in
++       Expr.if' test
++       <$> implicit_seq results
++       <*> expr_of_ribs expr ribs
++    | ArrowRib (test, f) :: ribs ->
++       let open Expr in
++       let open Option in
++       applic
++         (lambda_simple
++            ["value"; "f"; "rest"]
++            (if'
++               (var "value")
++               (applic
++                  (applic (var "f") [])
++                  [var "value"])
++               (applic (var "rest") [])))
++       <$> ((fun rs -> [ test
++                       ; lambda_simple [] f
++                       ; lambda_simple [] rs
++                       ]
++            ) <$> expr_of_ribs expr ribs)
++    | ElseRib last :: _ ->
++       implicit_seq last
++    | [] ->
++       Option.some (Expr.const Constant.void);;
++  
++  let reserved_words =
++    ["and";"begin";"cond";"define";"else";
++     "if";"lambda";"let";"let*";"letrec";"or";
++     "quasiquote";"quote";"set!";"pset!";
++     "unquote";"unquote-splicing"];;
++  
++  let not_reserved : string -> bool =
++    fun x -> not (List.mem x reserved_words);;
++  
++    
++  let rec expr : t_parser =
++    fun sexpr ->
++    let open List.Foldable(TParser) in
++    fold
++      [ const
++      ; var
++      ; if'
++      ; lambda
++      ; applic
++      ; or'
++      ; def
++      ; set
++      ; begin'
++      ; cond
++      ; let'
++      ; letstar
++      ; letrec
++      ; and'
++      ; pset
++      ] sexpr
++  
++  and const : t_parser =
++    function
++    | Pair (Symbol "quote", Pair (sexpr, Nil))
++      | ((Bool _ | Number _ | Char _ | String _)
++         as sexpr) ->
++       Fun.(Option.some+Expr.const+Constant.sexpr) sexpr
++    | Pair (Symbol "quasiquote", Pair (sexpr, Nil)) ->
++       quasiquoted sexpr
++    | _ -> Option.none
++  
++  and quasiquoted : t_parser =
++    fun se ->
++    match se with
++    | Pair (Symbol "unquote", Pair (sexpr, Nil)) ->
++       expr sexpr
++    | Pair (Symbol "unquote-splicing", Pair (_, Nil)) -> Option.none
++    (* maybe it should fall into the last case and read *)
++    | Pair ( Pair (Symbol "unquote-splicing", Pair (sexpr, Nil))
++           , rest ) ->
++       let open Option in
++       Expr.applic
++         (Expr.var "append") <$>
++         sequence [expr sexpr; quasiquoted rest]
++    | Pair (sexpr, rest) ->
++       let open Option in
++       Expr.applic
++         (Expr.var "cons") <$>
++         sequence List.(quasiquoted <$> [sexpr ; rest])
++    | sexpr ->
++       Fun.(Option.some+Expr.const+Constant.sexpr)
++         sexpr
++  
++  and var : t_parser =
++    let open Fun in
++    let open Option in
++    fun sexpr ->
++    ((<$>) Expr.var
++     + guard not_reserved
++     + Macro.string_of_symbol) sexpr
++  
++  and if' : t_parser =
++    function
++    | Pair ( Symbol "if"
++           , Pair ( x1
++                  , Pair ( x2
++                         , Pair ( x3 , Nil ) ) ) ) ->
++       let open Option in
++       Expr.if' <$> expr x1 <*> expr x2 <*> expr x3
++    | Pair ( Symbol "if"
++           , Pair ( x1
++                  , Pair ( x2 , Nil ) ) ) ->
++       let open Option in
++       Expr.if' <$> expr x1 <*>
++         expr x2 <*>
++         pure (Expr.const Constant.void)
++    | _ -> Option.none
++
++
++  and lambda : t_parser =
++    function
++    | Pair ( Symbol "lambda"
++           , Pair ( args
++                  , body ) ) ->
++       let simple_args args =
++         let open Fun in
++         let module AndFold = List.Foldable(Bool.And) in
++         (Option.guard (AndFold.fold + List.map not_reserved) +
++            Option.guard List.is_unique +
++            Option.(=<<)
++              (Option.sequence + List.map Macro.string_of_symbol)
++         ) (Macro.list_of_sexpr args)
++       in
++       let optional_args args =
++         let open Fun in
++         let module AndFold = List.Foldable(Bool.And) in
++         let le_map f (xs,b) = (List.(f <$> xs), f b) in
++         let le_sequence (xs, x) =
++           let open Option in
++           (fun x y -> (x,y)) <$> Option.sequence(xs) <*> x
++         in
++         (Option.guard
++            (AndFold.fold +
++               List.map not_reserved +
++               (uncurry+flip) List.cons) +
++            Option.guard (List.is_unique
++                          + (uncurry+flip) List.cons) +
++            Option.(=<<)
++              (le_sequence +
++                 le_map Macro.string_of_symbol)
++         ) (Macro.dotted_of_sexpr args)
++       in
++       let lambda_body body =
++         let open Fun in
++         (zero
++          + Option.(=<<) implicit_seq
++          + Option.(=<<) (Option.sequence + List.(<$>) expr)
++         ) (Macro.list_of_sexpr body)
++       in
++       let open Option in
++       let simple =
++         Expr.lambda_simple <$>
++           simple_args args in
++       let optional =
++         Fun.uncurry Expr.lambda_opt <$>
++           optional_args args in
++       (simple <|> optional) <*> (lambda_body body)
++    | _ -> Option.none
++  
++  and applic : t_parser =
++    fun sexpr ->
++    let open Fun in
++    (zero +
++       Option.(<$>) (uncurry Expr.applic) +
++       Option.(=<<) List.cons_of_list +
++       Option.(=<<)
++         (Option.sequence + List.map expr) +
++       Macro.list_of_sexpr
++    ) sexpr
++
++  and or' : t_parser =
++    function
++    | Pair ( Symbol "or" , sexprs ) ->
++       (match sexprs with
++        | Nil ->
++           let open Fun in
++           (Option.some + Expr.const + Constant.sexpr + Sexpr.bool)
++             false
++        | Pair ( sexpr , Nil ) ->
++           expr sexpr
++        | sexpr ->
++           let open Fun in
++           (zero +
++              Option.(<$>) Expr.or' +
++              Option.(=<<) (Option.sequence + List.(<$>) expr) +
++              Macro.list_of_sexpr
++           ) sexpr)
++    | _ -> Option.none
++
++  and simple_def : t_parser =
++    function
++    | Pair ( Symbol "define"
++           , Pair ( Symbol identifier
++                  , Pair (value, Nil))) ->
++       let open Option in
++       Expr.def
++       <$> guard not_reserved (pure identifier)
++       <*> (expr value)
++    | _ -> Option.none
++  
++  and mit_def : t_parser =
++    fun sexpr ->
++    let open Option in
++    Macro.mit_def_expand sexpr
++    >>= simple_def
++  
++  and def : t_parser =
++    fun sexpr ->
++    TParser.(simple_def + mit_def) sexpr
++
++  and set : t_parser =
++    function
++    | Pair ( Symbol "set!"
++           , Pair ( Symbol identifier
++                  , Pair (value, Nil))) ->
++       let open Option in
++       Expr.set
++       <$> guard not_reserved (pure identifier)
++       <*> (expr value)
++    | _ -> Option.none
++  
++  and begin' : t_parser =
++    function
++    | Pair ( Symbol "begin" , seq ) ->
++       let open Fun in
++       (zero
++        + Option.(=<<) (zero
++	                + Option.(<$>) explicit_seq
++	                + Option.sequence
++	                + List.(<$>) expr)
++        + Macro.list_of_sexpr
++       ) seq
++    | _ -> Option.none
++
++  and cond : t_parser =
++    fun sexpr ->
++    Fun.(
++      zero
++      + Option.(=<<) (expr_of_ribs expr)
++      + Option.(=<<) (ribs_of_sexpr expr)
++      + ribs_of_cond
++    ) sexpr
++
++  and let' : t_parser =
++    function
++    | Pair ( Symbol "let"
++           , Pair ( equalities
++                  , body ) ) ->
++
++       let open Option in
++       Macro.defs equalities
++       >>= fun (ids,vals) ->
++       applic (Macro.applic
++                 (Macro.lambda
++                    (Macro.sexpr_of_list ids)
++                    body)
++                 vals)
++  
++    | _ -> Option.none
++
++  and letstar : t_parser =
++    function
++    | Pair ( Symbol "let*"
++           , Pair ( Nil
++                  , body ) ) ->
++       let' ( Pair ( Symbol "let"
++                   , Pair ( Nil
++                          , body ) ) )
++    | Pair ( Symbol "let*"
++           , Pair ( Pair ( Pair ( id
++                                , Pair ( val'
++                                       , Nil ) )
++                         , Nil )
++                  , body ) ) ->
++       let' ( Pair ( Symbol "let"
++                   , Pair ( Pair ( Pair ( id
++                                        , Pair ( val'
++                                               , Nil ) )
++                                 , Nil )
++                          , body ) ) )
++    | Pair ( Symbol "let*"
++           , Pair ( Pair ( binding , rest )
++                  , body ) ) ->
++       let' ( Pair ( Symbol "let"
++                   , Pair ( Pair ( binding , Nil )
++                          , Pair ( Pair ( Symbol "let*"
++                                        , Pair ( rest , body ) )
++                                 , Nil ) ) ) )
++    | _ -> Option.none
++
++  and letrec : t_parser =
++    function
++    | Pair ( Symbol "letrec"
++           , Pair ( _
++                  , Nil ) ) ->
++       Option.none
++    | Pair ( Symbol "letrec"
++           , Pair ( equalities
++                  , body ) ) ->
++       let set : sexpr -> sexpr -> sexpr =
++         fun id val' ->
++         Pair ( Symbol "set!"
++              , Pair ( id
++                     , Pair ( val'
++                            , Nil ) ) ) in
++       let def_whatever : sexpr -> sexpr =
++         fun sexpr ->
++         Pair ( sexpr
++              , Pair ( Pair ( Symbol "quote"
++                            , Pair ( Symbol "whatever"
++                                   , Nil ) )
++                     , Nil ) ) in
++       let open Option in
++       Macro.defs equalities
++       >>= fun (ids,vals) ->
++       let' ( Pair ( Symbol "let"
++                   , Pair ( Macro.sexpr_of_list
++                              List.(def_whatever <$> ids)
++                          , Macro.sexpr_of_list_with
++                              List.Zip.(set <$> ids <*> vals)
++                              body ) ) )
++    | _ -> Option.none
++
++  and and' : t_parser =
++    function
++    | Pair ( Symbol "and"
++           , Nil ) ->
++       Fun.(Option.some+Expr.const+Constant.sexpr+Sexpr.bool) true
++    | Pair ( Symbol "and"
++           , Pair ( sexpr
++                  , Nil ) ) ->
++       expr sexpr
++    | Pair ( Symbol "and"
++           , Pair ( sexpr
++                  , rest ) ) ->
++       if' ( Pair ( Symbol "if"
++                  , Pair ( sexpr
++                         , Pair ( Pair ( Symbol "and"
++                                       , rest )
++                                , Pair ( Bool false
++                                       , Nil ) ) ) ) )
++    | _ -> Option.none
++
++  and pset : t_parser =
++    function
++    | Pair ( Symbol "pset!"
++           , equalities ) ->
++       let open Option in
++       let number_pair xs = List.pair_with Int.succ 0 xs in
++       Macro.defs equalities
++       >>= fun (ids,vals) ->
++       let (nids,nvals) = (number_pair ids, number_pair vals) in
++       pure List.(
++         (fun (i,val') ->
++           Macro.sexpr_of_list
++             [ Symbol ("_" ^ string_of_int i) ; val' ])
++         <$> nvals
++       )
++       >>= fun vals_bindings ->
++       pure List.(
++         (fun (i,id) ->
++           Macro.sexpr_of_list
++             [ Symbol ("set" ^ string_of_int i)
++             ; Macro.lambda
++                 (Macro.sexpr_of_list [ Symbol "x" ])
++                 (Macro.sexpr_of_list
++                    [ Macro.sexpr_of_list
++                        [ Symbol "set!" ; id ; Symbol "x" ]
++                    ; Symbol "x" ]) ])
++         <$> nids
++       )
++       >>= fun ids_set_bindings ->
++       pure List.(
++         (fun (i,id) ->
++           Macro.sexpr_of_list
++             [ Symbol "set!"
++             ; id
++             ; Macro.sexpr_of_list
++                 [ Symbol ("set" ^ string_of_int i)
++                 ; Symbol ("_" ^ string_of_int i) ] ])
++         <$> nids
++       )
++       >>= fun ids_set_applics ->
++       let'
++         (Macro.sexpr_let
++            (Macro.sexpr_of_list (vals_bindings @ ids_set_bindings))
++            (Macro.sexpr_of_list ids_set_applics))
++    | _ -> Option.none;;
++end;;
++
+ exception X_syntax_error;;
+ 
+ module type TAG_PARSER = sig
+@@ -54,11 +612,16 @@ let reserved_word_list =
+   ["and"; "begin"; "cond"; "define"; "else";
+    "if"; "lambda"; "let"; "let*"; "letrec"; "or";
+    "quasiquote"; "quote"; "set!"; "pset!"; "unquote";
+-   "unquote-splicing"];;  
++   "unquote-splicing"];;
+ 
+-(* work on the tag parser starts here *)
++let discard_option : 'a option -> 'a =
++  function
++  | Some x -> x
++  | None -> raise X_syntax_error;;
+ 
+-let tag_parse_expressions sexpr = raise X_not_yet_implemented;;
++let tag_parse_expressions =
++  let open Fun in
++  discard_option + Option.sequence + List.(<$>) TParse.expr;;
+ 
+   
+ end;; (* struct Tag_Parser *)

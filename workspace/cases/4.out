@@ -1,0 +1,18 @@
+
+LambdaSimple' (["x"],
+ Seq'
+  [Set' (Var' (VarParam ("x", 0)), Box' (VarParam ("x", 0)));
+   Or'
+    [Applic'
+      (LambdaOpt' (["y"], "z",
+        ApplicTP'
+         (LambdaSimple' ([],
+           ApplicTP'
+            (LambdaSimple' ([],
+              ApplicTP' (Var' (VarFree "+"),
+               [BoxGet' (VarBound ("x", 2, 0)); Var' (VarBound ("z", 1, 1))])),
+            [])),
+         [])),
+      [BoxGet' (VarParam ("x", 0)); Const' (Sexpr (Number (Fraction (1, 1))))]);
+     LambdaSimple' ([], BoxSet' (VarBound ("x", 0, 0), Var' (VarFree "w")));
+     ApplicTP' (Var' (VarFree "w"), [Var' (VarFree "w")])]])

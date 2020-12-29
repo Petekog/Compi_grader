@@ -1,0 +1,5 @@
+LambdaSimple (["x"; "y"; "z"],
+ Applic (Var "+",
+  [Var "x"; Var "y";
+   LambdaSimple (["z"],
+    Applic (Var "+", [Var "z"; Const (Sexpr (Number (Fraction (2, 1))))]))]))

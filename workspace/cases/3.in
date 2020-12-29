@@ -1,0 +1,8 @@
+Applic
+  (LambdaSimple (["x"],
+    If (Applic (Var "x", [Const (Sexpr (Number (Fraction(1, 1))))]),
+     Applic (Var "x", [Const (Sexpr (Number (Fraction(2, 1))))]),
+     Applic
+      (LambdaSimple (["x"], Set (Var "x", Const (Sexpr (Number (Fraction (0, 1))))),
+      [Const (Sexpr (Number (Fraction (3, 1))))]))),
+  [LambdaSimple (["x"], Var "x")])

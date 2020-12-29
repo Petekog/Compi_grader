@@ -1,0 +1,8 @@
+
+LambdaSimple' (["x"; "y"; "z"],
+ ApplicTP' (Var' (VarFree "+"),
+  [Var' (VarParam ("x", 0)); Var' (VarParam ("y", 1));
+   LambdaSimple' (["z"],
+    ApplicTP' (Var' (VarFree "+"),
+     [Var' (VarParam ("z", 0)); Var' (VarBound ("x", 0, 0));
+      Const' (Sexpr (Number (Fraction (1, 1))))]))]))

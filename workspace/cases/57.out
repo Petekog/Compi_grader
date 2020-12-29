@@ -1,0 +1,21 @@
+
+Def' (Var' (VarFree "func"),
+ LambdaSimple' (["x"; "y"; "z"; "w"],
+  Seq'
+   [Set' (Var' (VarParam ("x", 0)), Box' (VarParam ("x", 0)));
+    Set' (Var' (VarParam ("y", 1)), Box' (VarParam ("y", 1)));
+    Set' (Var' (VarParam ("z", 2)), Box' (VarParam ("z", 2)));
+    Set' (Var' (VarParam ("w", 3)), Box' (VarParam ("w", 3)));
+    ApplicTP' (Var' (VarFree "list"),
+     [LambdaSimple' ([], BoxGet' (VarBound ("x", 0, 0)));
+      LambdaSimple' ([], BoxGet' (VarBound ("y", 0, 1)));
+      LambdaSimple' ([], BoxGet' (VarBound ("z", 0, 2)));
+      LambdaSimple' ([], BoxGet' (VarBound ("w", 0, 3)));
+      LambdaSimple' ([],
+       BoxSet' (VarBound ("x", 0, 0), Const' (Sexpr (Number (Fraction (0, 1))))));
+      LambdaSimple' ([],
+       BoxSet' (VarBound ("y", 0, 1), Const' (Sexpr (Number (Fraction (1, 1))))));
+      LambdaSimple' ([],
+       BoxSet' (VarBound ("z", 0, 2), Const' (Sexpr (Number (Fraction (2, 1))))));
+      LambdaSimple' ([],
+       BoxSet' (VarBound ("w", 0, 3), Const' (Sexpr (Number (Fraction (3, 1))))))])]))

@@ -1,0 +1,1 @@
+LambdaSimple (["x"], Set (Var "x", Applic (Var "f", [Var "y"])))

@@ -1,0 +1,11 @@
+Applic (Var "y",
+  [LambdaSimple (["y"],
+    Seq
+     [Set (Var "a", LambdaSimple (["b"], Applic (Var "a", [Var "b"])));
+      Set (Var "t",
+       LambdaSimple (["x"],
+        Seq
+         [Set (Var "y",
+           LambdaSimple (["j"], Applic (Var "x", [Var "j"; Var "x"])));
+          Var "h"]));
+      Applic (Var "y", [Var "a"])])])

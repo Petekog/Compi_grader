@@ -1,0 +1,4 @@
+
+LambdaSimple' (["x"],
+ Set' (Var' (VarParam ("x", 0)),
+  Applic' (Var' (VarFree "f"), [Var' (VarFree "y")])))

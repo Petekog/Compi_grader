@@ -1,0 +1,4 @@
+LambdaSimple (["x"; "y"],
+ Applic (Var "list",
+  [LambdaSimple ([], Var "x"); LambdaSimple ([], Var "y");
+   LambdaSimple (["z"], Set (Var "x", Var "z"))]))

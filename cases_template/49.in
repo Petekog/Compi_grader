@@ -1,0 +1,8 @@
+Def (Var "test",
+ LambdaSimple (["x"],
+  Applic
+   (LambdaSimple (["y"],
+     Applic (Var "cons",
+      [LambdaSimple ([], Var "x");
+       Applic (Var "cons", [Set (Var "x", Var "y"); Const (Sexpr Nil)])])),
+   [Const (Sexpr (Number (Fraction (1, 1))))])))

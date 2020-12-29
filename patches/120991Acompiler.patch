@@ -1,0 +1,2033 @@
+diff --git a/reader.ml b/reader.ml
+index 32445c2..746cd4a 100644
+--- a/reader.ml
++++ b/reader.ml
+@@ -1,5 +1,6 @@
+ 
+ #use "pc.ml";;
++open PC;;
+ 
+ exception X_not_yet_implemented;;
+ exception X_this_should_not_happen;;
+@@ -28,11 +29,796 @@ let rec sexpr_eq s1 s2 =
+   | Symbol(s1), Symbol(s2) -> s1 = s2
+   | Pair(car1, cdr1), Pair(car2, cdr2) -> (sexpr_eq car1 car2) && (sexpr_eq cdr1 cdr2)
+   | _ -> false;;
++  open PC;;
++  let char_space = make_char (fun ch1 ch2 -> ch1 >= ch2);;
++let nt_whitespaces = star (char_space ' ');;
++let digit = range '0' '9';;
++
++
++
++
++
++
++let make_paired nt_left nt_right nt = (*clean spaces before sign*)
++let nt = caten nt_left nt in
++let nt = pack nt (function (_, e) -> e) in
++let nt = caten nt nt_right in
++let nt = pack nt (function (e, _) -> e) in
++  nt;;
++
++  let makehalf__paired nt_left  nt = (*clean spaces before sign*)
++let nt = caten nt_left nt in
++let nt = pack nt (function (_, e) -> e) in
++
++  nt;;
++
++  let make_half_spaced nt = makehalf__paired nt_whitespaces  nt;;
++
++let make_spaced nt = make_paired nt_whitespaces nt_whitespaces nt;;
++
++let tok_lparen = make_spaced ( char '(');;
++
++let tok_rparen = make_spaced ( char ')');;
++
++let tok_addop = make_spaced ( char '+');;
++
++let tok_mulop = make_spaced ( char '*');;
++
++let tok_expop = (* only allows a space (from left  7^2 ) afther the operator sign*)
++ let caret = char '^' 
++ and right_spaced = make_paired nt_epsilon nt_whitespaces in
++ right_spaced caret;;
++
++
++let nt_digit_0_to_9_2 = (*use  callbackafther*)
++pack ( const(fun ch-> '0' <= ch && ch <='9'))
++(fun ch -> (int_of_char ch ) - 48);;
++
++
++let nt_integer =
++  let rec make_nt_natural () =
++     pack (     
++     caten nt_digit_0_to_9_2
++
++                  (disj (delayed make_nt_natural (*  make_nt_natural wait for a list and with epsilon  it get  ([],'123'*)   ) 
++                  nt_epsilon))(* wait for the s*)
++
++
++                     (function (a,s)-> a :: s) in 
++                      pack (make_nt_natural())
++                         (fun s ->
++                        ( List.fold_left
++                         (fun a b -> 10 * a + b )
++                         0
++                         s));;
++
++
++                        let porfect =  (fun s ->
++                         ( List.fold_right
++                          (fun a b -> 10 * a + b )
++                          [0]
++                          s))434543 ;;
++                          let porfect =  (fun s ->
++                          ( List.fold_right
++                           (fun a b -> 10 * a + b )
++                           [0]
++                           s))443 ;;
++                           let porfect =  (fun s ->
++                           ( List.fold_right
++                            (fun a b -> 10 * a + b )
++                            [7;2]
++                            s))123 ;;
++
++
++  
++
++
++
++
++
++
++let extract_AST (ast,rest) = if rest = [] then ast else raise X_no_match;;
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++
++     let pack2 nt f s =
++      let (e, s) = (nt s) in
++      ((f (e,s)), s);;
++    
++
++     
++     let make_paired2 nt_left nt_right nt = (*clean spaces before sign*)
++     let nt = caten nt_left nt in  (*   (a,b)= a= ([' '], ['#'; 't']) b = [' '; 'n'; ' '] *)
++
++     let nt = pack nt (function (_, e) -> e) in (* (['#'; 't'] ,[' '; 'n'; ' ']*)
++
++     let nt = caten nt nt_right in  (* (['#'; 't'], []) ,[' '; 'n'; ' ']*)
++     let nt = pack2 nt (fun ((e1,space), other) ->  match (other,space) with 
++       | ([],[])-> e1
++       | (_,[])->  raise X_no_match
++       | _ ->e1
++        ) in
++
++       nt;;
++
++
++
++
++     
++     let make_spaced_vertified nt = make_paired2 nt_whitespaces nt_whitespaces nt;;
++
++
++
++      let rec gcd first_num second_num = 
++       if second_num = 0 then first_num else gcd second_num (first_num mod second_num);;
++
++      
++
++      let upper_to_lower= (List.map (fun ch -> lowercase_ascii ch) )
++
++
++
++      let make_range_symbol leq (s : char list) =
++        const (fun ch -> (leq 'a' ch) && (leq 'z' ch) || (leq 'A' ch) && (leq 'Z' ch) || ( ch == '!')|| ch = '$' || ch == '*' || 
++        ch == '^' || ch = '*' || ch== '+' || ch == '<' || ch == '-' || ch =='>' || ch = '/' || ch= '?'|| ch = '_' || ch == '-' || ch == '.' ) s;;
++      
++      let symbol_range = make_range_symbol (fun ch1 ch2 -> ch1 <= ch2);;
++
++      let tok_symbol = star symbol_range;;
++
++      let ranged_symbol lis =  (Symbol (list_to_string (extract_AST (tok_symbol (upper_to_lower lis)))));;
++
++
++     let nt_backslash =   (char_of_int 92) ;;
++     let nt_backslash_const =  (char nt_backslash );;
++   
++    
++     let nt_return =   (char_of_int 13) ;;
++     let nt_newline =   (char_of_int 10) ;;
++     let nt_tab =   (char_of_int 9) ;;
++     let nt_double_quote =   '"' ;;
++     let nt_page =   (char_of_int 12) ;;
++     
++
++
++
++
++let make_char2 equal ch1 = const (fun ch2 -> equal ch1 ch2);;
++
++let char2 = make_char2 (fun ch1 ch2 -> ch1 != ch2);;
++
++
++let chareE   = const (fun ch2 ->  ch2 != 'e' && ch2 != 'E');;
++
++
++let char2_space = make_char2 (fun ch1 ch2 -> ch1 < ch2);;
++
++
++let charForNoSpaAndClosSandS = const (fun ch1 -> ch1 > ' ' && ch1 != ')'&& ch1 != '#' && ch1 != '\"'  );;
++  
++let charForNoSpaAndClos = const (fun ch1 -> ch1 > ' ' && ch1 != ')' );;
++let charForNoOpeAndClos = const (fun ch1 -> ch1 != '(' && ch1 != ')' );;
++ 
++
++  let trueeee = (fun ch -> 
++ ( 'a'  <= ch  && ch <= 'z' ) ||( '0'  <= ch  && ch <= '9' ) || (( 'A'  <= ch) && ( 'Z'  >= ch) )|| ( ch == '!')|| ch = '$' || ch == '*' || 
++ ch == '^' || ch = '*' || ch== '+' || ch == '<' || ch == '=' || ch =='>' || ch = '/' || ch= '?'|| ch = '_' || ch == '-' || ch == '.'|| ch == ':' )
++ 
++
++let make_range_symbol2  (s : char list) =
++        (const trueeee ) s;;
++
++let    make_range_symbol3   = star make_range_symbol2;;
++
++let tok_symbol2 = star make_range_symbol2
++
++
++
++
++let trueeee3 = (fun ch -> 
++( '0'  <= ch  && ch <= '9' ) ||  ch = '/' ||  ch = '.' ||  ch = '+' ||  ch = '-' ||  ch = 'e'  )
++
++
++let make_range_symbol3  (s : char list) =
++       (const trueeee3 ) s;;
++
++let tok_symbol3 = star make_range_symbol3
++
++
++
++let tok_nil2 = (pack ( caten (make_spaced ( char_ci '('))  (char ')' )) (fun ch -> Nil ))  
++
++
++
++  let  rec out_last_in_list fil_str str =    
++    if List.length str == 1 then
++       (fil_str, str)
++    else out_last_in_list (List.append  fil_str [(List.hd str)] ) (List.tl str)
++  
++
++    let rec find_string  str  =
++
++      let (s, left) =  star(char2 '\"') str in
++      if left ==[]
++            then raise X_no_match
++      else if s == [] 
++           then (s, List.tl left)
++
++      else if List.length left ==1 
++           then 
++            let (_,last) = out_last_in_list [] s in
++           if  List.hd last == '\\'
++                then raise X_no_match
++           else
++               (s,[])
++
++      else 
++      let (_,last) = out_last_in_list [] s in
++      if List.hd last != '\\' then (s, List.tl left)
++      else
++      let (w1, w2) =find_string (List.tl left) in
++      let w1 =  List.append    ['"'] w1 in
++       (List.append s  w1 ,w2);;
++
++       
++    
++     let rec find_deli_in_exp count str fil_str rest1 =
++      if count == 0 then (fil_str,List.tl rest1)
++      else
++      let   (ope, rest) =(star charForNoOpeAndClos) str in
++      if (List.hd rest) == ')' then
++      find_deli_in_exp   (count -1)  (List.tl rest)   (List.append fil_str (List.append ope [')'] )) rest 
++      else  find_deli_in_exp   (count + 1)  (List.tl rest)   (List.append fil_str (List.append ope ['('] )) rest ;;
++          
++    let find_sexpr_rest str =
++      let (_, str) = nt_whitespaces str in
++      let   (ope, rest) = star(char '(') str in
++      let (let_first_exp1,rest)  = find_deli_in_exp  (List.length ope)  (  rest ) [] [] in
++      ( List.append ope  let_first_exp1,rest) ;;
++    
++      let rec find_numSymbol_sexpr1 str =  
++        let (first_sexpr, sexprs) = (star charForNoSpaAndClosSandS) str in    
++        (first_sexpr,  sexprs )
++
++
++      let rec find_sexpr1 str =        
++      let (_, free_start_whitespaxes) = nt_whitespaces str in
++      let first_char = List.hd free_start_whitespaxes in
++      if first_char != '(' && first_char != '`' && first_char != '\039'  && first_char != ',' && first_char != '\"'&& first_char != '#'
++       then
++        let (first_sexpr, sexprs) = (star charForNoSpaAndClosSandS) free_start_whitespaxes in    
++           (first_sexpr,  sexprs )
++
++      else if first_char == '`' || first_char == '\039' || (first_char == ',' && 
++      (List.hd (List.tl free_start_whitespaxes  )) != '@') then 
++
++      let (b1,b2)  = find_sexpr1 (List.tl str ) in
++       let a = List.append [first_char] b1 in
++       (a,b2)
++
++       else if first_char == '#' then 
++       let cut = List.tl free_start_whitespaxes in
++       if List.hd cut != '\\' then
++       (List.append ['#'] [List.hd cut], List.tl cut )
++       else
++
++       let (r1,r2) = try disj (word_ci "#\\nul") (disj (word_ci "#\\newline")  (disj (word_ci "#\\return") (disj(word_ci "#\\tab") (disj (word_ci "#\\page") (word_ci "#\\space"))))) free_start_whitespaxes 
++       with X_no_match ->  (List.append (List.append ['#'] ['\\']) [(List.hd (List.tl cut ))],   List.tl (List.tl cut )) in
++       (r1,r2)
++       
++        else if  (first_char == ',' && 
++        (List.hd (List.tl free_start_whitespaxes  )) == '@') then 
++  
++        let (b1,b2)  = find_sexpr1 (List.tl (List.tl str )) in
++        let a = List.append [',';'@'] b1 in
++        (a,b2)
++
++        else if (first_char == '\"') then
++
++       let (a,b) =  (find_string (List.tl free_start_whitespaxes)) in
++
++        (List.append (List.append ['\"'] a) ['\"']  ,b)   
++      
++      else 
++      find_sexpr_rest str;;
++
++  
++
++     let rec find_deli_in_exp2 count str fil_str rest1 =
++      if count == 0 then (fil_str,List.tl rest1)
++      else
++      let   (ope, rest) =(star charForNoOpeAndClos) str in
++      if (List.hd rest) == ')' then
++      find_deli_in_exp2   (count -1)  (List.tl rest)   (List.append fil_str (List.append ope [')'] )) rest 
++      else  find_deli_in_exp2   (count + 1)  (List.tl rest)   (List.append fil_str (List.append ope ['('] )) rest ;;
++          
++    let find_sexpr_rest2 str =
++      let (let_first_exp1,rest)  = find_deli_in_exp2  1  str  [] [] in
++      let (a,b ) = out_last_in_list  [] let_first_exp1 in
++      if List.hd b == ')' then
++        (a,rest)  else raise X_no_match;;
++      
++    
++      
++      let find_sexpr12 str =           (* "3456 jj )"  345)   (567)  (567 ffff) ((567 ffff) jhb) jjj)   345 (87 77)) *)
++      let (_, free_start_whitespaxes) = nt_whitespaces str in
++      find_sexpr_rest2 free_start_whitespaxes;;
++    
++
++
++
++
++
++      let is_a_natur  str =
++        let number = List.filter (fun x ->  x >= '0' && x <= '9') str  in
++        if List.length number != List.length str then false
++        else true;;
++      let check_if_integer str =
++        if str ==[] then false else
++        let first_ch = List.hd str in
++        if List.length str == 1 && (first_ch == '+' || first_ch == '-') then false else
++        let first_correct =  first_ch == '+' ||  first_ch == '-' || (first_ch >= '0' && first_ch <= '9' ) in
++        is_a_natur (List.tl str) && first_correct ;; 
++     
++           
++      let is_a_num_with_dot_fr befor aft = 
++        check_if_integer befor && is_a_natur aft
++
++        let is_float str =
++          let (beforeDot,aftDot) =  star (char2 '.')  str in 
++          if aftDot == [] then false else is_a_num_with_dot_fr  beforeDot (List.tl aftDot)
++     
++      let is_a_num_with_Ee  str = 
++        let (before,aft) =  star chareE str in 
++       ( (check_if_integer before)|| (is_float before)) &&   (check_if_integer (List.tl aft)) ;;
++
++     
++      let check_if_num str  =
++          let (str, _) =  star (char2_space ' ')  str in (*the num\symbol*)
++          let fraDot = List.filter (fun x ->  x == '.' || x == '/') (  str)  in
++          let eE = List.filter (fun x ->  x == 'e' || x == 'E') (  str)  in
++          let (beforeDot,aftDot) =  star (char2 '.')  str in 
++          let (beforeFra,aftFrac) =  star (char2 '/')  str in 
++          if List.length eE >1 then false
++          else if eE !=[] then is_a_num_with_Ee str
++          else if (List.length fraDot) >1  then false
++          else if (aftDot != [] ) then is_a_num_with_dot_fr beforeDot (List.tl aftDot)
++          else if (aftFrac != [] ) then is_a_num_with_dot_fr beforeFra (List.tl aftFrac)
++          else check_if_integer str;;
++
++
++ (*let r = List.hd[]*)
++
++
++  let rec final str = 
++    let free_start_space = nt_whitespaces str in
++    let (_,valid) = free_start_space in
++    if valid ==[] then [] else
++    let x = List.hd valid in
++    if check_if_num valid && ((x <= '9' && x>= '0' )|| x = '+' || x = '-') 
++       then (disj (disj tok_int2 tok_int_unsign2 ) tok_ext valid) 
++    else if ( List.length  valid) <2 && (List.hd str) = '.' then raise X_no_match
++    else if x = '.' &&  ( List.hd (List.tl str)) <= ' '  then raise X_no_match
++    else if (x <= 'Z' && x >= 'A' )|| (x <= 'z' && x >= 'a' )|| (x <= '9' && x >= '0' )||  ( x == '!')|| x = '$' || x == '*' || 
++    x == '^' || x = '*' || x== '=' || x == '<' || x == '+' || x =='>' || x = '/' || x= '?'|| x = '_' || x == '-' || x == '.'  || x == ':' then
++    (ranged_symbol2 valid)
++
++    else if x == '(' then 
++    let (c1,c2) = nt_whitespaces  (List.tl valid)  in 
++    if List.hd c2 == ')' then tok_nil valid
++    else tok_pair  valid                     
++    else if x == '#' then disj tok_boolean tok_char valid
++    else if x ==  '`' || x == ',' || x == '\039' then tok_quote valid
++    else if x == '\"' then tok_string_prim valid
++    else raise X_no_match
++    
++    (*nil*)
++  and tok_quote str =
++  let fir = List.hd str in
++  if fir  ==  '`' then
++      let sexp = final (List.tl str) in
++      if List.length sexp == 1 then
++      [Pair(Symbol "quasiquote", Pair( (List.hd sexp), Nil))]
++      else
++      List.append  [Pair(Symbol "quasiquote", Pair( (List.hd sexp), Nil))] (List.tl sexp)
++   else if
++      fir  ==  '\039' then
++      let sexp = final (List.tl str) in
++      if List.length sexp == 1 then
++      [Pair(Symbol "quote", Pair( (List.hd sexp), Nil))]
++      else
++      List.append  [Pair(Symbol "quote", Pair( (List.hd sexp), Nil))] (List.tl sexp)
++else 
++      if List.length str >1 then
++        if List.hd  ( List.tl  str ) ==  '@' then
++        let sexp = final (List.tl(List.tl str)) in
++          if List.length sexp == 1 then
++          [Pair(Symbol "unquote-splicing", Pair( (List.hd sexp), Nil))]
++          else
++          List.append  [Pair(Symbol "unquote-splicing", Pair( (List.hd sexp), Nil))] (List.tl sexp)
++        else 
++        let sexp = final (List.tl str) in
++        if List.length sexp == 1 then
++        [Pair(Symbol "unquote", Pair( (List.hd sexp), Nil))]
++        else
++        List.append  [Pair(Symbol "unquote", Pair( (List.hd sexp), Nil))] (List.tl sexp)
++
++        else      let sexp = final (List.tl str) in
++        if List.length sexp == 1 then
++        [Pair(Symbol "unquote", Pair( (List.hd sexp), Nil))]
++        else
++        List.append  [Pair(Symbol "unquote", Pair( (List.hd sexp), Nil))] (List.tl sexp)
++    
++
++
++
++   and tok_nil str = 
++   let c = tok_nil2 str in
++   let (a,b) = c       in
++    if b ==[] then
++    [(extract_AST c) ]
++    
++    else
++    let add =  (final b) in
++    let add_fir =  [extract_AST c] in  
++    (List.append add_fir add  )
++
++
++(*boolean*)
++and tok_boolean str = 
++
++let (a,b)=
++  ( pack (disj ( ( word_ci "#t")) ( ( word_ci "#f") )) (fun ch ->   
++                                                                                                   if (List.hd (List.tl ch) == 'f' ||  List.hd (List.tl ch) == 'F')
++                                                                                                   then [Bool false]
++                                                                                                else [Bool true] )) str in
++     if b ==[] then a
++     else 
++     let k = final b in
++     List.append a k
++
++  and tok_char str =  
++  let str = if List.length str <= 2 then raise X_no_match
++  else List.tl str in
++  let y = List.hd str in
++  if y != '\\' then raise X_no_match else
++  let str = List.tl str in
++  let (_,str) = nt_whitespaces str in
++  let (result1,result2) = try ( pack ( word_ci "nul") (fun x -> [Char '\x00']) str)
++  with X_no_match ->   try ( pack ( word_ci "newline") (fun x -> [Char '\n'] )str)
++                        with X_no_match -> try ( pack ( word_ci "return") (fun x -> [Char '\r' ])str)
++                                            with X_no_match ->try ( pack ( word_ci "tab") (fun x -> [Char '\t' ])str)
++                                                              with X_no_match -> try ( pack ( word_ci "page") (fun x -> [Char '\x0c'] )str)
++                                                                                 with X_no_match -> try ( pack ( word_ci "space") (fun x -> [Char ' '] )str)
++                                                                                                     with X_no_match -> 
++  if List.length str == 1 then 
++  ([Char (List.hd str)], [])
++  else
++  ([Char (List.hd str)] ,  (List.tl str) ) in
++  
++  if result2 != [] then
++  let other =  final result2 in
++  List.append result1  other
++   else 
++  result1
++
++  (*numbers*)
++  and check_fraction2  (sign,parse_num,un_parse_num) = 
++  let (a,b)= (caten  ( disj (char '/')  (char '.') ) nt_integer  un_parse_num) in  (*('/',111), [])*)
++  let (c,d)= a in
++  if c == '.' then  check_float2 (sign,parse_num,d, b)
++  else if sign == '-' && b ==[]  then [Number( Fraction (parse_num/ (gcd d parse_num) * -1 , d/ (gcd d parse_num))) ]
++  else if b != [] && c <= ' ' then (if sign == '-' then (List.append   [Number (Fraction (d * -1, 1 ))]  (final b)) else [Number (Fraction (d, 1 ))])
++  else if b != []  then  raise X_no_match
++  else   [Number(Fraction ( parse_num/ (gcd d parse_num)  , d/ (gcd d parse_num)))] 
++  
++  and check_float2 (sign,start_num,end_num, left)= 
++    let gg1= string_to_list( ( string_of_int start_num)) in
++    let gg2= string_to_list( ( string_of_int end_num)) in
++    let gg12 =( float_of_string ( list_to_string(List.append gg1(List.append  ['.'] gg2 )))) in
++    let negit =( float_of_string (list_to_string (List.append ['-'](List.append gg1 (List.append ['.'] gg2))))) in
++    if left != []  then  raise X_no_match 
++    else if sign == '-'   then [Number( Float negit)]
++    else [ Number (Float gg12)] 
++   
++
++    and tok_ext str=
++    let (a,b) =  star (const  (fun ch1  -> ch1 > ' ' )) str in
++    let fi = final b in
++    let fin = [Number (Float (float_of_string (list_to_string a) )) ] in
++    if b == [] then fin
++    else List.append fin fi
++
++    
++    and tok_int2 str =
++      let (r,k) = disj (make_half_spaced ( char_ci '+')) (make_half_spaced ( char_ci '-') ) str in (* (+, "777")*)
++      let (r1,k1)= (nt_integer k) in (*777,[]*)
++      if r == '+' && k1 ==[]  then [ Number ( Fraction ( r1 ,1))]
++      else if r == '-' && k1 ==[]  then [Number (Fraction ((r1* -1),1))]
++      else if r == '-' && (List.hd k1) <= ' ' then ( List.append [Number (Fraction (  r1 ,1))]  (final k1) )
++      else if r == '+' && (List.hd k1) <= ' ' then ( List.append [Number (Fraction (  r1* -1 ,1))]  (final k1) )
++      else check_fraction2 (r,r1,k1) 
++    
++      and tok_int_unsign2 str =
++        let (a,b) = (nt_whitespaces str) in
++        let (r1,k1)= (nt_integer b) in (*777,[]*)
++        if  k1 ==[]  then [Number (Fraction (  r1 ,1))]
++        else if (List.hd k1) <= ' ' then ( List.append [Number (Fraction (  r1 ,1))]  (final k1) )
++        else check_fraction2 ('+',r1,k1) 
++    
++    (* symbol*)                           
++
++      and ranged_symbol2 lis =
++       let (a,b) = tok_symbol2 (upper_to_lower lis) in
++       let c = (Symbol (list_to_string (extract_AST (tok_symbol2 (upper_to_lower a))))) in
++       if (   sexpr_eq c  (Symbol ".") ) then raise X_no_match
++       else
++       if b ==[] then [c]
++      
++      else ( List.append [c]  (final b) )
++      (*boolean*)
++
++      and make_paired nt_left nt_right nt = (*clean spaces before sign*)
++      let nt = caten nt_left nt in
++      let nt = pack nt (function (_, e) -> e) in
++      let nt = caten nt nt_right in
++      let nt = pack nt (function (e, _) -> e) in
++        nt
++
++    
++  
++        and tok_pair str =  
++
++  let ( _ , fu_lis) =  make_spaced ( char_ci '(') str  in
++  let (first, rest) = find_sexpr1 fu_lis in
++  let (_, rest) = (nt_whitespaces rest) in
++  if List.hd rest == ')'
++      then [Pair ( List.hd (final first) , Nil )]
++  else  
++       if (List.hd rest) == '.' then
++          let (second, rest) = find_sexpr12 (List.tl rest) in
++          let (_, rest) = (nt_whitespaces rest) in
++
++              
++          if rest ==[] then [Pair ( List.hd (final first) , List.hd (final second ))]
++          else (List.append  [Pair ( List.hd (final first) , List.hd (final second ))] (final rest ))
++       else
++       let (second, rest) = find_sexpr12  rest in
++     
++       let (_, rest) = (nt_whitespaces rest) in
++        if rest ==[] then
++
++        [Pair ( List.hd (final first) , List.hd (final ( List.append ( List.append  ['(']   second ) [')'] )
++        ) )] 
++        else  (List.append  [Pair ( List.hd (final first) , List.hd (final ( List.append ( List.append  ['(']   second ) [')'] )
++        ) )]  (final rest ))
++
++    and remove_last_quote str =
++    if List.length str == 0 then raise X_no_match else    
++    let (a, b) = out_last_in_list [] str in
++    if List.hd b == '\"' then a
++    else let (r1,r2 )=  out_last_in_list [] (List.tl str) in
++    r1
++
++
++    
++    and cut_blackslash  fil num =
++    if num ==0 then fil
++   
++    else  cut_blackslash (List.append fil ['\\']) (num -1)
++
++
++
++
++
++
++     and tok_string  (s : char list) = 
++   
++      let (a1,a2 )  =  star (const  (fun ch1  -> ch1 != nt_backslash )) s in    (* Hello \\t \\r \\n world!*) 
++      if a2 == [] then a1 else
++      let (b1,b2 )  = (( star (const  (fun ch1  -> ch1 == nt_backslash )) a2))  in (*\\t -> (\\, t)*) (*b1 = (\\, b2 = t )*)
++      if b2 == [] then List.append a1 (cut_blackslash [] ((List.length b1)/2)) else  (* no \n \r etc*)
++      let a =   List.hd b2 in
++      if a == 
++      nt_return || a == nt_newline || a == nt_tab 
++     || a == nt_page then 
++              let add_ta = if a ==
++              nt_return then 'r'  else if a == nt_newline then  'n' else if  a == nt_tab  then  't'
++               else   'f' in        
++                      if ((List.length b1) mod 2) !=0 then
++                      let cute_blacksl =  cut_blackslash  [] (((List.length b1)+1) /2) in                     
++                      let con = (List.append a1 cute_blacksl) in
++                      let con = (List.append con [add_ta]) in
++                      let con2 = if List.length b2 >1 then  List.tl b2 else [] in
++                      let combi = List.append con con2 in
++                      combi
++                      else
++                      let cute_blacksl =  cut_blackslash  [] (((List.length b1)) /2) in                         
++                      let con = (List.append a1 cute_blacksl) in                   
++                      let con2 = if b2 != [] then tok_string b2 else b2 in
++                      let combi = List.append con con2 in
++                      combi
++      else if a == 
++      'n' || a == 'r' || a == 't'    
++      || a == 'f' then 
++          
++          let add_ta = if a ==
++          'r' then nt_return else if a == 'n' then nt_newline else if  a == 't' then nt_tab
++          else  if a == '"'  then nt_double_quote else   nt_page in                
++ 
++          if ((List.length b1) mod 2) !=0 then
++          let cute_blacksl =  cut_blackslash  [] (((List.length b1)) /2) in
++          let con = (List.append a1 cute_blacksl) in
++          let con = (List.append con [add_ta]) in  
++          let con2 = if List.length b2 >1 then  tok_string(List.tl  b2) else [] in
++          let combi = List.append con con2 in
++          combi
++          else
++          let cute_blacksl =  cut_blackslash  [] (((List.length b1)) /2) in                         
++          let con = (List.append a1 cute_blacksl) in                   
++          let con2 = if b2 != [] then tok_string b2 else b2 in
++          let combi = List.append con con2 in
++          combi
++
++    else        
++    let cute_blacksl =  cut_blackslash  [] (((List.length b1)) /2) in                         
++    let con = (List.append a1 cute_blacksl)         in
++    let con2 = if b2 != [] then tok_string b2 else b2 in
++    let combi = List.append con con2 in
++    combi
++
++         and  tok_string_prim s=
++         let s = List.tl s in
++
++         let (s, left) =  find_string s in
++         
++        
++         if left == [] then  [  String (  list_to_string (tok_string s ))]
++         else    List.append [  String (  list_to_string (tok_string s ))]  (final left);;
++
++ 
++
++let tok_ext str=
++  [Number (Float (float_of_string str )) ]
++
++
++
++
++
++
++
++
++  let  rec is_he_a_first_comment sta str num = 
++    if sta ==[] then false else
++    let (until,af ) = star (const  (fun ch1  -> ch1 != '\"' )) str  in 
++    if af ==[] then false else
++    let (until_when1,af1) = find_string (List.tl af) in (* unti=hghh af1 = jhuh *)
++    let first_posi =  (List.length until) +1 + num in
++    let end_posi = first_posi +  (List.length until_when1)  in
++    let staL = (List.length sta ) in
++     if staL > first_posi && staL <=  end_posi
++     then true else
++     is_he_a_first_comment  sta   af1 (((List.length until)+(List.length until_when1) +2) +num );;
++  
++
++ 
++
++
++let rec tok_comments_first str = 
++      let (until,af ) = star (const  (fun ch1  -> ch1 != ';' )) str  in   (*  aaaa;bbb/nccc  *)   (*until = aaa , af = bbb/nccc*)
++      if af ==[] 
++          then until
++      else
++          let ins =  is_he_a_first_comment (List.append [':'] until) str 0 in
++          if ins == false then
++              let (comm1,comm2)  = star (const  (fun ch1  -> ch1 != '\n' ))af  in   (* comm1 = bbb , comm2 =/nccc or nothing*) 
++              if comm2 = []
++                then until
++              else   
++              List.append until (tok_comments_first comm2)
++
++          else 
++        List.append
++        (List.append until [';']) (tok_comments_first (List.tl af));;
++
++
++
++
++    
++
++
++
++
++
++
++
++
++
++
++
++        
++
++  let rec find_last_se str  lastexp  = 
++    let (parse1,parse2) = star (const  (fun ch1  -> ch1 != '#' ))str  in 
++    if parse2 ==[] then (List.append lastexp str)
++    else 
++             if (List.hd (List.tl parse2) ) == ';' then
++                  find_last_se (List.tl(List.tl parse2)) [] 
++                                                               
++             
++             else 
++                find_last_se (List.tl parse2) (List.append (List.append lastexp parse1 ) ['#']) ;;
++
++    let rec crop str num fil =
++      if num != 0 && str !=[] then
++      crop (List.tl str) (num -1) (List.append fil [(List.hd str)])
++      else fil 
++
++let get_start_finish str =
++let _sexpr = find_last_se str [] in
++let length_sexpr = List.length _sexpr in
++let length_str = List.length str in
++let diff = length_str - length_sexpr in
++
++let finish = crop str (diff - 2) [] in
++finish ;;
++ 
++
++
++let rec are_we_done str =  
++      let (parse1,parse2) = star (const  (fun ch1  -> ch1 != '#' ))str  in 
++      if parse2 ==[] then  true
++      else
++      if (List.hd (List.tl parse2) ) == ';' then false
++      else are_we_done (List.tl parse2);;
++       
++
++
++
++
++let rec tok_comments_second str  =   
++    let y =  get_start_finish   str in
++    let last =  find_last_se  str [] in
++    if are_we_done str then last
++    else 
++    let (sexp1, sexp2) = find_sexpr1 last in
++      
++    let r =  try (final sexp1)
++    with X_no_match -> raise X_no_match in
++
++    if r ==[] then raise X_no_match
++    else
++
++    let first = y in
++    let build =  (List.append first sexp2) in
++
++    tok_comments_second  build;;
++
++
++
++    
++
++let finalComments str =   (tok_comments_second( string_to_list str) );;
++let finalComments2 str =  (tok_comments_first (finalComments str))
+ 
+ module Reader: sig
+   val read_sexprs : string -> sexpr list
+ end
+ = struct
++
+ let normalize_scheme_symbol str =
+   let s = string_to_list str in
+   if (andmap
+@@ -40,7 +826,10 @@ let normalize_scheme_symbol str =
+ 	s) then str
+   else Printf.sprintf "|%s|" str;;
+ 
+-
+-let read_sexprs string = raise X_not_yet_implemented;;
+   
+-end;; (* struct Reader *)
++
++let read_sexprs string = final (finalComments2 string);;
++
++end;;
++
++
+diff --git a/readme.txt b/readme.txt
+index e69de29..87545bd 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1,9 @@
++(a) Milina 317656593 
++(b) Tehila 209486455
++We assert that the work we submitted is 100% our own. We have not received any
++part from any other student in the class, nor have we give parts of it for use to others.
++Nor have we used code from other sources: Courses taught previously at this university,
++courses taught at other universities, various bits of code found on the internet, etc.
++We realize that should our code be found to contain code from other sources, that a
++formal case shall be opened against us with va’adat mishma’at, in pursuit of disciplinary
++action.
+\ No newline at end of file
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..6c9195b 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -69,11 +69,712 @@ end;;
+ 
+ module Semantics : SEMANTICS = struct
+ 
+-let annotate_lexical_addresses e = raise X_not_yet_implemented;;
+ 
+-let annotate_tail_calls e = raise X_not_yet_implemented;;
+ 
+-let box_set e = raise X_not_yet_implemented;;
++  let rec che x lis i  =
++    match lis with 
++    |[]  -> (false, i)
++    |lis-> if String.equal x  (List.hd lis) then (true, i) 
++                   else che x (List.tl lis ) (i+1)
++
++
++
++   let rec che_p_h x lis i =
++    match lis with 
++    |[]  -> (false, 0,0)
++    |lis->( let c = che x (List.hd lis) (0) in
++                    match c with
++                    | (false,_) -> che_p_h x (List.tl lis) (i+1) (*bound*)
++                    | (true, num)-> (true, i,num))  (*parm*)
++                     
++                         
++               
++          
++      let rec che_p x lis i =
++    match lis with 
++    |[]  -> (false, 0,0)
++    |lis->( let c =che x (List.hd lis) (0) in
++                    match c with
++                    | (false,_) -> che_p_h x (List.tl lis) 0 (*bound*)
++                    | (true, num)-> (true , num , -1 ))  (*parm*)
++                     
++             
++   
++
++                  
++
++
++
++
++let rec annotate_lexical_addresses2 e = 
++  match e with
++  |Var(x)-> Var'(VarFree(x))
++  |Const(x) -> Const'(x)
++  |If( i, th ,el) -> If'( (annotate_lexical_addresses2 i),(annotate_lexical_addresses2 th),(annotate_lexical_addresses2 el) )
++  |Set( Var(va), s2 ) ->  let v = (VarFree(va)) in
++                             Set'( v ,(annotate_lexical_addresses2 s2))
++  |Def( Var(va), s2 ) -> let v = (VarFree(va)) in
++                             Def'( v ,(annotate_lexical_addresses2 s2))
++  | Seq(lis)->  Seq' (annotate_lexical_addresses_list lis [])
++  | Or(lis)->  Or' (annotate_lexical_addresses_list lis [])
++  |LambdaOpt(str_li, str, exp)-> LambdaOpt' (str_li ,str, annotate_lexical_addresses_lambdaOpt (List.append str_li [str]) exp)
++  |LambdaSimple(str,exp)->  LambdaSimple' ( str , (annotate_lexical_addresses_lambdaS [str] exp ))
++  |Applic(exp, li_exp)-> Applic'((annotate_lexical_addresses2 exp) , (annotate_lexical_addresses_list li_exp []))
++  |_-> raise X_no_match
++
++and annotate_lexical_addresses_lambdaOpt  str exp =
++annotate_lexical_addresses_lambdaS [str] exp
++
++and annotate_lexical_addresses_lambdaS str exp  =
++match exp  with
++|Var(x)-> (let ch =  che_p x str 0 in 
++                              match ch with 
++                              | (false ,_,_) ->  let a = (VarFree(x))  in  
++                                              Var'(a)
++                              | (_,lmNum,j) ->  if j == -1 then
++                                    Var'(VarParam(x,lmNum)) 
++                                    else  Var'(VarBound(x, lmNum , j)) ) 
++|Def( va, s2 )   -> ( let h = (annotate_lexical_addresses_lambdaS str va )  in
++                             let se = annotate_lexical_addresses_lambdaS str s2  in
++                              match h with
++                              | Var'(x) -> Def' (x , se )
++                              |_->raise X_this_should_not_happen )
++|Set( va, s2 )      -> ( let h = (annotate_lexical_addresses_lambdaS str va )  in
++                             let se = annotate_lexical_addresses_lambdaS str s2  in
++                              match h with
++                              | Var'(x) -> Set' (x , se )
++                              |_->raise X_this_should_not_happen )
++                                                          
++|Or(lis)->  Or' (splis lis [] str )
++|Seq(lis)->  Seq' (splis lis [] str )
++|If(a,b,c)-> If'((annotate_lexical_addresses_lambdaS str a ) , 
++                    (annotate_lexical_addresses_lambdaS str b ) , 
++                    (annotate_lexical_addresses_lambdaS str c ))
++
++|LambdaSimple(str2,exp)-> LambdaSimple' (str2 , (annotate_lexical_addresses_lambdaS (List.append [str2] str ) exp ))
++|LambdaOpt(str_li, str2, exp)-> LambdaOpt' (str_li, str2 , (annotate_lexical_addresses_lambdaS (List.append  [(List.append  str_li [str2] )] str) exp ))
++|Applic(exp, li_exp)-> Applic'((annotate_lexical_addresses_lambdaS str exp ) , ( splis li_exp [] str ))
++|e -> annotate_lexical_addresses2 e
++
++and splis lis fi str =
++  match lis with 
++  |[]  -> fi
++  |lis->    let fil = annotate_lexical_addresses_lambdaS  str (List.hd lis)  in
++            splis (List.tl lis)  (List.append fi [fil]) str 
++                 
++
++and annotate_lexical_addresses_list lis fil =
++  match lis with 
++  |[]-> fil
++  |lis-> let new_expr =  annotate_lexical_addresses2 (List.hd lis) in
++            let new_lis = List.append fil [new_expr] in
++            annotate_lexical_addresses_list (List.tl lis) new_lis
++
++let annotate_lexical_addresses e =   annotate_lexical_addresses2 e;;
++
++
++
++
++
++
++
++       
++
++let rec tail_pos e = match e with 
++|LambdaSimple'(str2,exp)-> LambdaSimple'(str2, handel_tail_lam exp)
++|LambdaOpt'(str_li, str, exp)->  LambdaOpt'(str_li, str, handel_tail_lam exp ) 
++|Def'( va, s2 )   -> Def'( va, tail_pos s2 )
++|Set'( va, s2 )   -> Set'( va, tail_pos s2 )
++|If'(a,b,c)-> If'((tail_pos  a ) , 
++                    (tail_pos  b ) , 
++                    (tail_pos  c ))
++|Applic'(exp, li_exp)-> Applic'((tail_pos  exp ) ,handel_tail_lis li_exp [])
++|Or'(lis)->  Or' (handel_tail_lis lis []  )
++|Seq'(lis)->  Seq' (handel_tail_lis lis []  )
++|_-> e
++
++
++
++
++
++and handel_tail_lis expr_lis fil = 
++match expr_lis with 
++|[]-> fil
++| hd::lis ->  handel_tail_lis  lis (List.append fil [(tail_pos hd)] )
++
++
++and handel_tail_seq expr_lis fil = 
++match expr_lis with 
++|[]-> fil
++|hd::[]-> List.append fil [(handel_tail_lam hd)]
++| hd::lis ->  handel_tail_seq  lis (List.append fil [(tail_pos hd)] )
++
++
++
++and handel_tail_lam expr = 
++match expr with 
++|Applic'(exp, li_exp)-> ApplicTP'( tail_pos exp,  handel_tail_lis li_exp [] )
++|If'(a,b,c)-> If'( tail_pos a, 
++                   handel_tail_lam b , 
++                   handel_tail_lam c )
++|Def'( va, s2 )   -> Def'( va, tail_pos s2 )
++|Set'( va, s2 )   -> Set'( va, tail_pos s2 ) 
++|LambdaSimple'(str2,exp)->   LambdaSimple'(str2, handel_tail_lam exp)
++|LambdaOpt'(str_li, str, exp)-> LambdaOpt'(str_li, str, handel_tail_lam exp  )  
++|Or'(lis)->  Or' (handel_tail_seq lis []  )
++|Seq'(lis)->  Seq' (handel_tail_seq lis []  )
++|_-> expr     
++
++
++
++let annotate_tail_calls e = tail_pos e ;;
++
++
++
++
++
++
++let rec boxSet symbol  exp2  = 
++  match exp2 with 
++  |If' (a,b,c)-> If' (boxSet symbol  a ,boxSet symbol  b ,boxSet symbol  c )
++  |Seq'(lis)->  Seq'(List.map (boxSet symbol ) lis) 
++  |Def'(var ,expr)-> Def'(var , boxSet symbol  expr)
++  |Set'(VarParam (symbolN, i), expr)->  if  String.equal symbolN symbol then 
++                              BoxSet' (VarParam (symbolN, i), boxSet symbol  expr) 
++                              else Set'(VarParam (symbolN, i), boxSet symbol   expr)
++  |Set'(VarBound (symbolN, i1, i2), expr) ->  if  String.equal symbolN symbol then 
++                             BoxSet' (VarBound (symbolN, i1, i2), boxSet symbol  expr)
++                              else Set'(VarBound (symbolN, i1, i2), boxSet symbol expr)
++  |BoxSet'(VarParam (symbolN, i), expr)->  if  String.equal symbolN symbol then 
++                                BoxSet' (VarParam (symbolN, i), boxSet symbol  expr) 
++                                else BoxSet'(VarParam (symbolN, i), boxSet symbol   expr)
++  |BoxSet'(VarBound (symbolN, i1, i2), expr) ->  if  String.equal symbolN symbol then 
++                                BoxSet' (VarBound (symbolN, i1, i2), boxSet symbol  expr)
++                                else BoxSet'(VarBound (symbolN, i1, i2), boxSet symbol expr)
++  |Set'(VarFree (symbolN), expr) ->  Set'(VarFree (symbolN), boxSet symbol expr)                               
++  |Or'(lis)-> Or'(List.map (boxSet symbol ) lis) 
++  |LambdaSimple'(str, exp)-> let cheCon =  contain str symbol in
++                             if cheCon == true then LambdaSimple'(str, exp)
++                             else LambdaSimple'(str , boxSet symbol  exp)
++  |LambdaOpt'(str,s, exp)-> let cheCon =  contain (List.append str [s]) symbol in
++                             if cheCon == true || s = symbol then LambdaOpt'(str,s, exp)
++                             else LambdaOpt'(str , s,boxSet symbol  exp)
++  |Applic'(expr, exprLis)->   Applic'(boxSet symbol  expr , List.map (boxSet symbol ) exprLis)                     
++  |ApplicTP'(expr, exprLis)->   ApplicTP'(boxSet symbol  expr , List.map (boxSet symbol ) exprLis)                          
++  |x->x
++  
++  and contain str symbol = 
++  match str with
++  |[]-> false
++  |hd::rest-> if  String.equal hd symbol then true else contain rest symbol
++  
++  
++  
++  
++  and boxSetCount symbol  i exp2  = 
++  match exp2 with 
++  |If' (a,b,c)->  boxSetCount symbol 0 a  + boxSetCount symbol 0 b  +boxSetCount symbol 0 c  + i
++  |Seq'(lis)->  concatNum (List.map (boxSetCount symbol 0 ) lis)  0 +i
++  |Def'(var ,expr)->  boxSetCount symbol i  expr
++  |Set'(VarParam (symbolN, i2), expr)->  if  String.equal symbolN symbol then 
++                               boxSetCount symbol (i+1) expr
++                              else boxSetCount symbol i expr
++  |Set'(VarBound (symbolN, i1, i2), expr) ->  if  String.equal symbolN symbol then 
++                             boxSetCount symbol (i+1) expr
++                              else  boxSetCount symbol i expr
++  
++  |BoxSet'(VarParam (symbolN, i2), expr)->    boxSetCount symbol i expr
++  
++  |BoxSet'(VarBound (symbolN, i1, i2), expr) ->  boxSetCount symbol i expr
++  
++  |Set'(VarFree (symbolN), expr) ->  boxSetCountIn symbol (i) expr                            
++  |Or'(lis)->  concatNum (List.map (boxSetCount symbol 0 ) lis) 0 +i
++  |LambdaSimple'(str, exp)-> let cheCon =  contain str symbol in
++                             if cheCon == true then i
++                             else boxSetCount symbol (i) exp
++  |LambdaOpt'(str,s, exp)-> let cheCon =  contain (List.append str [s]) symbol in
++                            if cheCon == true then i
++                             else boxSetCount symbol (i) exp
++  |Applic'(expr, exprLis)->   boxSetCount symbol 0  expr + (concatNum (List.map (boxSetCount symbol 0 ) exprLis)  )   0    +i            
++  |ApplicTP'(expr, exprLis)->    boxSetCount symbol 0 expr + (concatNum (List.map (boxSetCount symbol 0 ) exprLis)  )   0   + i                        
++  |x->   i
++  
++  
++  and boxSetCountOut symbol  i exp2  = 
++  match exp2 with 
++  |If' (a,b,c)->  (boxSetCountOut symbol 0 a  + boxSetCountOut symbol 0 b  +boxSetCountOut symbol 0 c  ) +i
++  |Seq'(lis)->  concatNum (List.map (boxSetCountOut symbol 0 ) lis)  0 +i
++  |Def'(var ,expr)->  boxSetCountOut symbol i  expr
++  |Set'(VarParam (symbolN, i2), expr)->  if  String.equal symbolN symbol then 
++                               boxSetCountOut symbol (i+1) expr
++                              else boxSetCountOut symbol (i) expr
++  |Set'(VarBound (symbolN, i1, i2), expr) ->  if  String.equal symbolN symbol then 
++                             boxSetCountOut symbol (i +1) expr
++                              else  boxSetCountOut symbol (i) expr
++  |BoxSet'(VarBound (symbolN, i1, i2), expr) ->   if  String.equal symbolN symbol then 
++                             boxSetCount symbol (i+1) expr
++                              else  boxSetCount symbol i expr                            
++  |Set'(VarFree (symbolN), expr) ->  boxSetCountOut symbol (i) expr                            
++  |Or'(lis)->  concatNum (List.map (boxSetCountOut symbol 0 ) lis) 0 +i
++  |LambdaSimple'(str, exp)-> i
++  |LambdaOpt'(str,s, exp)-> i
++  |Applic'(expr, exprLis)->   boxSetCountOut symbol 0  expr + (concatNum (List.map (boxSetCountOut symbol 0 ) exprLis)  )   0  +i              
++  |ApplicTP'(expr, exprLis)->    boxSetCountOut symbol 0  expr + (concatNum (List.map (boxSetCountOut symbol 0 ) exprLis)  )   0 +i                          
++  |x-> i
++  
++  
++  
++  and boxSetCountIn symbol  i exp2  = 
++  match exp2 with 
++  |If' (a,b,c)->  (boxSetCountIn symbol 0 a  + boxSetCountIn symbol 0 b  +boxSetCountIn symbol 0 c  )+i
++  |Seq'(lis)->  concatNum (List.map (boxSetCountIn symbol 0 ) lis)  0 +i
++  |Def'(var ,expr)->  boxSetCountIn symbol i  expr
++  |Set'(_, expr)->  
++                               boxSetCountIn symbol (i) expr    
++   |BoxSet'(_, expr)->  
++                               boxSetCountIn symbol (i) expr    
++                                                                                   
++  |Or'(lis)->  concatNum (List.map (boxSetCountIn symbol 0 ) lis) 0 +i
++  |LambdaSimple'(str, exp)-> let cheCon =  contain str symbol in
++                             if cheCon == true then i
++                             else   boxSetCount symbol i exp   
++  |LambdaOpt'(str,s, exp)-> let cheCon =  contain (List.append str [s]) symbol in
++                            if cheCon == true then i
++                             else boxSetCount symbol (i) exp
++  |Applic'(expr, exprLis)->   boxSetCountIn symbol 0  expr + (concatNum (List.map (boxSetCountIn symbol 0 ) exprLis)  )   0 +i                
++  |ApplicTP'(expr, exprLis)->    boxSetCountIn symbol 0  expr + (concatNum (List.map (boxSetCountIn symbol 0 ) exprLis)  )   0 + i                          
++  |x-> i 
++  
++  
++  
++  and boxGetCount symbol i exp2  = 
++  match exp2 with 
++  |If' (a,b,c)->  (boxGetCount symbol 0 a  + boxGetCount symbol 0 b  +boxGetCount symbol 0 c  ) +i
++  |Seq'(lis)->  (concatNum (List.map (boxGetCount symbol 0 ) lis)  0) + i
++  |Def'(var ,expr)->  boxGetCount symbol i  expr
++  |Set'(var, expr)-> boxGetCount symbol i  expr
++  |BoxSet'(var, expr)-> boxGetCount symbol i  expr
++  |Or'(lis)->  (concatNum (List.map (boxGetCount symbol 0 ) lis) 0) +i
++  |LambdaSimple'(str, exp)-> let cheCon =  contain str symbol in
++                             if cheCon == true then i
++                             else boxGetCount symbol (i) exp
++  |LambdaOpt'(str,s, exp)-> let cheCon =  contain (List.append str [s]) symbol in
++                            if cheCon == true then i
++                             else boxGetCount symbol (i) exp
++  |Applic'(expr, exprLis)->   boxGetCount symbol 0  expr + (concatNum (List.map (boxGetCount symbol 0 ) exprLis)  )   0       +i         
++  |ApplicTP'(expr, exprLis)->    boxGetCount symbol 0  expr + (concatNum (List.map (boxGetCount symbol 0 ) exprLis)  )   0  +i                         
++  
++  |Var' (VarParam (symbolN, i2)) ->   if  String.equal symbolN symbol then  (i+1)  else  i
++  |Var' (VarBound (symbolN, i1, i2))    ->   if  String.equal symbolN symbol then  (i+1)  else  i            
++  |x->i
++  
++  
++  
++  and boxGetCountOut symbol i exp2  = 
++  match exp2 with 
++  |If' (a,b,c)->  (boxGetCount symbol 0 a  + boxGetCount symbol 0 b  +boxGetCount symbol 0 c  ) +i
++  |Seq'(lis)->  concatNum (List.map (boxGetCount symbol 0 ) lis)  0 +i
++  |Def'(var ,expr)->  boxGetCount symbol i  expr
++  |Set'(var, expr)-> boxGetCount symbol i  expr
++  |BoxSet'(var, expr)-> boxGetCount symbol i  expr
++  |Or'(lis)->  concatNum (List.map (boxGetCount symbol 0 ) lis) i
++  |LambdaSimple'(str, exp)-> i
++  |LambdaOpt'(str,s, exp)-> i
++  |Applic'(expr, exprLis)->   boxGetCount symbol 0  expr + (concatNum (List.map (boxGetCount symbol i ) exprLis)  )   0   +i             
++  |ApplicTP'(expr, exprLis)->    boxGetCount symbol 0  expr + (concatNum (List.map (boxGetCount symbol i ) exprLis)  )   0    +i                       
++  
++  |Var' (VarParam (symbolN, i2)) -> if  String.equal symbolN symbol then  (i+1)  else  i
++  |Var' (VarBound (symbolN, i1, i2))    ->   if  String.equal symbolN symbol then  (i+1)  else  i            
++  |x->i
++  
++  
++  and boxGetCountIn symbol  i exp2  = 
++  match exp2 with 
++  |If' (a,b,c)->  (boxGetCountIn symbol 0 a  + boxGetCountIn symbol 0 b  +boxGetCountIn symbol 0 c  ) +i
++  |Seq'(lis)->  concatNum (List.map (boxGetCountIn symbol 0 ) lis)  0 +i
++  |Def'(var ,expr)->  boxGetCountIn symbol i  expr
++  |Set'(x, expr)->  boxGetCountIn symbol (i) expr
++  |BoxSet'(var, expr)-> boxGetCount symbol i  expr
++  |Or'(lis)->  concatNum (List.map (boxGetCountIn symbol 0 ) lis) 0 +i
++  |LambdaSimple'(str, exp)-> let cheCon =  contain str symbol in
++                             if cheCon == true then i
++                             else boxGetCount symbol (i) exp
++  |LambdaOpt'(str,s, exp)->let cheCon =  contain (List.append str [s]) symbol in
++                            if cheCon == true then i
++                             else boxGetCount symbol (i) exp
++  |Applic'(expr, exprLis)->   boxGetCountIn symbol 0 expr + (concatNum (List.map (boxGetCountIn symbol 0 ) exprLis)  )   0  +i              
++  |ApplicTP'(expr, exprLis)->    boxGetCountIn symbol 0  expr + (concatNum (List.map (boxGetCountIn symbol 0 ) exprLis)  )   0 +i                           
++  |x-> i
++  
++  
++  and concatNum lis i=
++    match lis with
++    |[]->i
++    | hd :: rest -> concatNum rest (i+ hd)
++  
++  
++  
++   
++  
++  
++  
++  
++  
++    and boxGet symbol  exp2  = 
++    match exp2 with 
++    |If' (a,b,c)-> If' (boxGet symbol  a ,boxGet symbol  b ,boxGet symbol  c )
++    |Seq'(lis)->  Seq'(List.map (boxGet symbol ) lis) 
++    |Def'(var ,expr)-> Def'(var , boxGet symbol  expr)
++    |Set'(var, expr)-> Set'(var, boxGet symbol expr)
++    |BoxSet'(var, expr)-> BoxSet'(var, boxGet symbol expr)
++    |Or'(lis)-> Or'(List.map (boxGet symbol ) lis) 
++    |LambdaSimple'(str, exp)-> let cheCon =  contain str symbol in
++                               if cheCon == true then LambdaSimple'(str, exp)
++                               else LambdaSimple'(str , boxGet symbol  exp)
++    |LambdaOpt'(str,s, exp)-> let cheCon =  contain (List.append str [s]) symbol in
++                               if cheCon == true || s = symbol then LambdaOpt'(str,s, exp)
++                               else LambdaOpt'(str , s,boxGet symbol  exp)
++    |Applic'(expr, exprLis)->   Applic'(boxGet symbol  expr , List.map (boxGet symbol ) exprLis)                     
++    |ApplicTP'(expr, exprLis)->   ApplicTP'(boxGet symbol  expr , List.map (boxGet symbol ) exprLis)
++    |Var' (VarParam (symbolN, i)) -> if  String.equal symbolN symbol then BoxGet'  (VarParam (symbolN, i)) else Var' (VarParam (symbolN, i))
++    |Var' (VarBound (symbolN, i1, i2))    -> if  String.equal symbolN symbol then  BoxGet' (VarBound (symbolN, i1, i2))  else  Var' (VarBound (symbolN, i1, i2))            
++    |x->x
++  
++  
++  and replace a = 
++  match a with
++  |Var' (x) ->  Const'(Sexpr(Symbol "no")) 
++  |x ->x
++  
++  
++  and  listHasNe  lis fil symbol filB lisB =
++  match lis with 
++  |[] -> false
++  | hd :: rest -> let setIn = boxSetCountIn symbol 0 hd in
++                  let readlis =  boxGetCount symbol 0 (Seq'(rest)) in
++                  let readlisB =  boxGetCount symbol 0 (Seq'(lisB)) in 
++                  let readfil =  boxGetCount symbol 0 (Seq'(fil)) in
++                  let readfilB =  boxGetCount symbol 0 (Seq'(filB)) in 
++                  let read =  readfilB +readfil +readlisB+ readlis in
++                  if read != 0 && setIn != 0  then true else
++                  let setOut = boxSetCountOut symbol 0 hd in 
++                  let readlis =  boxGetCountIn symbol 0 (Seq'(rest)) in
++                  let readlisB =  boxGetCountIn symbol 0 (Seq'(lisB)) in 
++                  let readfil =  boxGetCountIn symbol 0 (Seq'(fil)) in
++                  let readfilB =  boxGetCountIn symbol 0 (Seq'(filB)) in
++                  let read =  readfilB +readfil +readlisB+ readlis in
++                  if read != 0 && setOut != 0  then true else 
++                  listHasNe  rest (List.append fil [hd]) symbol filB lisB
++  
++               
++  
++  
++  and  listHasNeApplic  lis fil symbol filB lisB exp =
++  
++  
++  match lis with 
++  |[] ->    
++                   let setIn = boxSetCountIn symbol 0 exp in (*set exp*)
++  
++        
++      
++                  
++                  let readlisB =  boxGetCount symbol 0 (Seq'(lisB)) in 
++                  let readfil =  boxGetCount symbol 0 (Seq'(fil)) in
++                  let readfilB =  boxGetCount symbol 0(Seq'(filB)) in 
++                  let readexp =  boxGetCountOut symbol 0 exp in 
++                  let read =  readfilB +readfil +readlisB + readexp in
++              
++  
++                  if read != 0 && setIn != 0  then true else
++                  
++                  let setOut = boxSetCountOut symbol 0 exp in 
++                
++                  let readlisB =  boxGetCountIn symbol 0 (Seq'(lisB)) in 
++                  let readfil =  boxGetCountIn symbol 0 (Seq'(fil)) in
++                  let readfilB =  boxGetCountIn symbol 0 (Seq'(filB)) in
++                  let read =  readfilB +readfil +readlisB in 
++                  if read != 0 && setOut != 0  then true else 
++                  false
++  
++  | hd :: rest ->  let setIn = boxSetCountIn symbol 0 hd in  (* set in*)
++                  let readOut = boxGetCountOut symbol 0 hd in
++                  let readlis =  boxGetCount symbol 0 (Seq'(rest)) in
++                  let readlisB =  boxGetCount symbol 0 (Seq'(lisB)) in 
++                  let readfil =  boxGetCount symbol 0 (Seq'(fil)) in
++                  let readfilB =  boxGetCount symbol 0 (Seq'(filB)) in 
++                  let readexp =  boxGetCount symbol 0 exp in 
++                let read =  readfilB +readfil +readlisB+ readlis + readexp + readOut in
++                
++                  if read != 0 && setIn != 0  then true else
++  
++                  let setOut = boxSetCountOut symbol 0 hd in 
++                  let readlis =  boxGetCountIn symbol 0 (Seq'(rest)) in
++                  let readlisB =  boxGetCountIn symbol 0 (Seq'(lisB)) in 
++                  let readfil =  boxGetCountIn symbol 0 (Seq'(fil)) in
++                  let readfilB =  boxGetCountIn symbol 0 (Seq'(filB)) in
++                  let readexp =  boxGetCountIn symbol 0 exp in
++                  let read =  readfilB +readfil +readlisB+ readlis +readexp in
++                 
++      
++                  if read != 0 && setOut != 0  then true else 
++                  listHasNeApplic  rest (List.append fil [hd]) symbol filB lisB exp
++  
++               
++  and box expr_lis symbol fil sign origen =
++  
++         
++  match expr_lis with
++  |LambdaSimple'(str, exprSeq) :: lis ->
++  
++  
++  
++          if (contain str symbol)== true 
++          then box lis symbol (List.append fil [LambdaSimple'(str, exprSeq) ]) sign origen
++          else  let checkIfThereISSetInLambda = (boxSetCount symbol 0 exprSeq) in
++            if checkIfThereISSetInLambda == 0 
++            then box lis symbol (List.append fil [LambdaSimple'(str, exprSeq) ]) sign origen
++            else
++            let getNumlis = boxGetCount symbol 0 (Seq'(lis)) in
++            let upFil = List.map replace fil in
++            let getNumfil = boxGetCount symbol 0 (Seq'(upFil)) in
++            let getCount = getNumlis + getNumfil in 
++            if getCount == 0 then  box lis symbol (List.append fil [LambdaSimple'(str, exprSeq) ]) sign origen
++            else (true,origen)    
++            
++  |LambdaOpt'(s,st, exprSeq) :: lis ->
++          if (contain (List.append s [st]) symbol)== true 
++          then box lis symbol (List.append fil [LambdaOpt'(s,st, exprSeq) ]) sign origen
++          else  let checkIfThereISSetInLambda = (boxSetCount symbol 0 exprSeq) in
++            if checkIfThereISSetInLambda == 0 
++            then box lis symbol (List.append fil [LambdaOpt'(s,st, exprSeq) ]) sign origen
++            else
++            let getNumlis = boxGetCount symbol 0 (Seq'(lis)) in
++            let upFil = List.map replace fil in
++            let getNumfil = boxGetCount symbol 0 (Seq'(upFil)) in
++            let getCount = getNumlis + getNumfil in
++            if getCount == 0 then  box lis symbol (List.append fil [LambdaOpt'(s,st, exprSeq) ]) sign origen
++            else (true,origen) 
++            
++            
++  |Set'(VarParam (symbolN, i), expr) :: lis -> 
++                     let letToconti = String.equal symbolN symbol  in (*expr in*)
++                    let setExprIn = boxSetCountIn symbol  0 expr in             
++                    let getNumlis = boxGetCount symbol 0 (Seq'(lis)) in
++                    let upFil = List.map replace fil in
++                    let getNumfil = boxGetCount symbol 0 (Seq'(upFil)) in
++                    let readA = boxGetCountOut symbol 0 expr in 
++                    let getCountExprRead = getNumlis + getNumfil +readA in
++                    if (getCountExprRead != 0 && setExprIn!= 0 ) then (true,origen)                  
++  
++                    else if                   (*var *)
++                    let readForSet = boxGetCountIn symbol 0 expr in
++                    let getNumlis = boxGetCountIn symbol 0 (Seq'(fil)) in
++                    letToconti == true &&  (readForSet != 0 || getNumlis!=0 ) then (true,origen)  else
++                    let setExprOUT = boxSetCountOut symbol 0 expr in  (*expr out*)
++                    let readExprIn = boxGetCountIn symbol 0 expr in  
++                    let readExprIn =  ( boxGetCountIn symbol 0 (Seq'(lis))) + readExprIn +
++                     (boxGetCountIn symbol 0 (Seq'(upFil))) in
++                    
++                    if(setExprOUT !=0 &&  readExprIn !=0)    then (true, origen)                             
++                    else  box lis symbol (List.append fil [Set'(VarParam (symbolN, i), expr)]) sign origen
++                  
++  
++  |Set'(VarBound (symbolN, i1, i2), expr) :: lis ->
++                    let letToconti = String.equal symbolN symbol  in (*expr in*)
++                    let setExprIn = boxSetCountIn symbol  0 expr in             
++                    let getNumlis = boxGetCount symbol 0 (Seq'(lis)) in
++                    let upFil = List.map replace fil in
++                    let getNumfil = boxGetCount symbol 0 (Seq'(upFil)) in
++                    let readA = boxGetCountOut symbol 0 expr in 
++                    let getCountExprRead = getNumlis + getNumfil +readA in
++                    if (getCountExprRead != 0 && setExprIn!= 0 ) then (true,origen)                  
++  
++                    else if                   (*var *)
++                    let readForSet = boxGetCountIn symbol 0 expr in
++                    let getNumlis = boxGetCountIn symbol 0 (Seq'(fil)) in
++                    letToconti == true &&  (readForSet != 0 || getNumlis!=0 ) then (true,origen)  else
++                    let setExprOUT = boxSetCountOut symbol 0 expr in  (*expr out*)
++                    let readExprIn = boxGetCountIn symbol 0 expr in  
++                    let readExprIn =  ( boxGetCountIn symbol 0 (Seq'(lis))) + readExprIn +
++                     (boxGetCountIn symbol 0 (Seq'(upFil))) in
++                    if(setExprOUT !=0 &&  readExprIn !=0)    then (true, origen) else                    
++                      box lis symbol (List.append fil [Set'(VarBound (symbolN, i1, i2), expr)]) sign origen
++  |Set'(VarFree (symbolF), expr) :: lis ->
++  
++                    let setExprIn = boxSetCountIn symbol  0 expr in    (*expr set in*) 
++                    let readA = boxGetCountOut symbol 0 expr in        
++                    let getNumlis = boxGetCount symbol 0 (Seq'(lis)) in (*read lis*)
++                    let upFil = List.map replace fil in
++                    let getNumfil = boxGetCount symbol 0 (Seq'(upFil)) in (*read fil*)
++                    let getCountExprRead = getNumlis + getNumfil + readA in (*all read fir expr*)
++                 
++                    if (getCountExprRead != 0 && setExprIn!= 0 ) then (true,origen)
++                    else
++                    let setExprOUT = boxSetCountOut symbol 0 expr in   (*expr set out*) 
++                    let readExprIn = boxGetCountIn symbol 0 expr in  
++                    let readExprIn =  ( boxGetCountIn symbol 0 (Seq'(lis))) + readExprIn +
++                     (boxGetCountIn symbol 0 (Seq'(upFil))) in
++                    if(setExprOUT !=0 &&  readExprIn !=0)    then (true, origen) else                    
++                      box lis symbol (List.append fil [Set'(VarFree (symbolF), expr)]) sign origen
++  |BoxSet'((g), expr) :: lis ->
++  
++                    let setExprIn = boxSetCountIn symbol  0 expr in    (*expr set in*) 
++                    let readA = boxGetCountOut symbol 0 expr in        
++                    let getNumlis = boxGetCount symbol 0 (Seq'(lis)) in (*read lis*)
++                    let upFil = List.map replace fil in
++                    let getNumfil = boxGetCount symbol 0 (Seq'(upFil)) in (*read fil*)
++                    let getCountExprRead = getNumlis + getNumfil + readA in (*all read fir expr*)
++                 
++                    if (getCountExprRead != 0 && setExprIn!= 0 ) then (true,origen)
++                    else
++                    let setExprOUT = boxSetCountOut symbol 0 expr in   (*expr set out*) 
++                    let readExprIn = boxGetCountIn symbol 0 expr in  
++                    let readExprIn =  ( boxGetCountIn symbol 0 (Seq'(lis))) + readExprIn +
++                     (boxGetCountIn symbol 0 (Seq'(upFil))) in
++                    if(setExprOUT !=0 &&  readExprIn !=0)    then (true, origen) else                    
++                      box lis symbol (List.append fil [BoxSet'((g), expr) ]) sign origen
++                                  
++                                  
++  
++  |If'(a,b,c) :: lis -> 
++                     let setExprIn = boxSetCountIn symbol  0 a in    (*set a in lambda*)    
++                     let getNumlis = boxGetCount symbol 0 (Seq'(lis)) in
++                     let upFil = List.map replace fil in (*new rules*)
++                     let getNumfil = boxGetCount symbol 0 (Seq'(upFil)) in
++                     let readB = boxGetCount symbol 0 b in (*read b,c *)
++                     let readC = boxGetCount symbol 0 c in
++                     let readA = boxGetCountOut symbol 0 a in
++                     let getCountExprRead = getNumlis + getNumfil +readC+ (*expr set in*) readB +readA in (* all read for in*)
++                   
++  
++                     if getCountExprRead !=0 && setExprIn !=0 then (true, origen) else
++                     let setExprOUT = boxSetCountOut symbol 0 a in  (*set out*)
++                     let readExprIn = boxGetCountIn symbol 0 a in
++                     let readExprIn =  ( boxGetCountIn symbol 0 (Seq'(lis))) + readExprIn +
++                     (boxGetCountIn symbol 0 (Seq'(upFil))) + (boxGetCountIn symbol 0 b)+ (boxGetCountIn symbol 0 c) in  (*all read for out*)
++                     if(setExprOUT !=0 &&  readExprIn !=0)    then (true, origen) else                    
++                 
++                     let setExprIn = boxSetCountIn symbol  0 b in 
++                     let getNumlis = boxGetCount symbol 0 (Seq'(lis)) in
++                     let upFil = List.map replace fil in
++                     let getNumfil = boxGetCount symbol 0 (Seq'(upFil)) in
++                     let readB = boxGetCount symbol 0 a in
++                     let readC = boxGetCount symbol 0 c in
++                     let readA = boxGetCountOut symbol 0 b in
++                     let getCountExprRead = getNumlis + getNumfil +readC+ readB +readA in
++                     if getCountExprRead !=0 && setExprIn !=0 then (true, origen) else
++               
++                     let setExprOUT = boxSetCountOut symbol 0 b in 
++                     let readExprIn = boxGetCountIn symbol 0 b in
++                     let readExprIn =  ( boxGetCountIn symbol 0 (Seq'(lis))) + readExprIn +
++                     (boxGetCountIn symbol 0 (Seq'(upFil))) + (boxGetCountIn symbol 0 a)+ (boxGetCountIn symbol 0 c) in  
++                     if(setExprOUT !=0 &&  readExprIn !=0)    then (true, origen) else  
++  
++  
++                     let setExprIn = boxSetCountIn symbol  0 c in 
++                     let getNumlis = boxGetCount symbol 0 (Seq'(lis)) in
++                     let upFil = List.map replace fil in
++                     let getNumfil = boxGetCount symbol 0 (Seq'(upFil)) in
++                     let readB = boxGetCount symbol 0 b in
++                     let readC = boxGetCount symbol 0 a in
++                     let readA = boxGetCountOut symbol 0 c in
++                     let getCountExprRead = getNumlis + getNumfil +readC+ readB +readA in
++                     if getCountExprRead !=0 && setExprIn !=0 then (true, origen) else
++                
++                     let setExprOUT = boxSetCountOut symbol 0 c in 
++                     let readExprIn = boxGetCountIn symbol 0 c in
++                     let readExprIn =  ( boxGetCountIn symbol 0 (Seq'(lis))) + readExprIn +
++                     (boxGetCountIn symbol 0 (Seq'(upFil))) + (boxGetCountIn symbol 0 b)+ (boxGetCountIn symbol 0 a) in  
++                     if(setExprOUT !=0 &&  readExprIn !=0)    then (true, origen) else  
++                     box lis symbol (List.append fil [If'(a,b,c) ]) sign origen
++  
++  
++  
++  |Or'(list) :: lis->  if (listHasNeApplic  list [] symbol fil lis (Seq'[])) == true then (true, origen) else
++  box lis symbol (List.append fil [Or'(list) ]) sign origen
++  
++  |Applic'(expr, exprLis):: lis ->     if  (listHasNeApplic  exprLis [] symbol fil lis expr )== true then (true, origen) else
++   box lis symbol (List.append fil [Applic'(expr, exprLis)]) sign origen                 
++  
++  |ApplicTP'(expr, exprLis):: lis ->  if ( listHasNeApplic  exprLis [] symbol fil lis expr) == true then (true, origen) else
++  box lis symbol (List.append fil [ApplicTP'(expr, exprLis)]) sign origen
++  
++  
++  |Def'(var,x) :: lis -> 
++  
++          let setExprIn = boxSetCountIn symbol  0 x in 
++          let getNumlis = boxGetCount symbol 0 (Seq'(lis)) in
++          let upFil = List.map replace fil in
++          let getNumfil = boxGetCount symbol 0 (Seq'(upFil)) in
++          let readA = boxGetCountOut symbol 0 x in 
++          let getCountExprRead = getNumlis + getNumfil +readA in
++          if getCountExprRead !=0 && setExprIn =0 then (true,origen) else
++  
++          let setExprOUT = boxSetCountOut symbol 0 x in 
++          let readExprIn = boxGetCountIn symbol 0 x in
++          let readExprIn =  ( boxGetCountIn symbol 0 (Seq'(lis))) + readExprIn +
++          (boxGetCountIn symbol 0 (Seq'(upFil))) in  
++          if(setExprOUT !=0 &&  readExprIn !=0)    then (true, origen) else 
++          box lis symbol (List.append fil [Def'(var,x) ]) sign origen
++  
++  
++   |[] -> (false, origen)
++  
++    
++                                                
++  |x ::lis ->  box lis symbol (List.append fil [x]) sign origen
++  
++  
++  let rec final_box expr =
++  match expr with 
++  |If'(a,b,c)-> If'(final_box a, final_box b, final_box c)
++  |Set'(a,b)-> Set'( a,final_box b)
++  |Def'(a,b)-> Def'( a,final_box b)
++  |Seq'(lis)-> Seq'(List.map final_box lis)
++  |Or'(lis)-> Or'(List.map final_box lis)
++  |Applic'(a,b) -> Applic'(final_box a,(List.map final_box b))
++  |ApplicTP'(a,b) -> ApplicTP'(final_box a,(List.map final_box b))
++  |LambdaSimple' (a,b)-> (let temp = (LambdaSimple'(a,(al_box b a 0))) in
++                          match temp with 
++                          |(LambdaSimple'(a,l1 ))->  LambdaSimple'(a, final_box l1 )
++                           |_ -> raise X_this_should_not_happen)
++  |LambdaOpt'(a,b,c)->  (let temp =  LambdaOpt'(a,b,(al_box c (List.append a [b])  0)) in
++                          match temp with 
++                          |(LambdaOpt'(a,h, l1 ))->  LambdaOpt'(a,h, final_box l1 )
++                           |_ -> raise X_this_should_not_happen )
++                           
++                           
++                           
++  |x -> x 
++  
++  and updo prot exp fil =
++  match exp with 
++  |Set' (x, Box' (y)):: rest-> updo prot rest (List.append fil([ Set' (x, Box' (y))]))
++  |x::rest-> (List.append (List.append (List.append fil [prot]) [x]) rest)
++  |[]->[prot]
++  
++  
++  
++  and al_box expr_lis str i  = 
++  match str with 
++  |[]-> expr_lis
++  | hd:: rest -> let lis = match expr_lis with |Seq'(lis)->lis
++                                               | x-> [x] in
++  let (sign, orign) = box  lis hd [] false lis in
++                if sign == false then  al_box expr_lis rest  (i+1)
++                else  let box = (boxGet hd (boxSet hd (Seq'(orign)))) in
++                match box with 
++                |Seq'(expr)->
++               let prot = Set' ((VarParam (hd, i)), Box' (VarParam (hd, i))) in
++               let exp =   Seq'( updo prot expr [] )  in
++               al_box exp  rest (i+1) 
++            
++               |_->raise X_this_should_not_happen;;
++  
++  
++
++let box_set e = final_box e;;
+ 
+ let run_semantics expr =
+   box_set
+diff --git a/tag-parser.ml b/tag-parser.ml
+index 138249e..2eb7127 100644
+--- a/tag-parser.ml
++++ b/tag-parser.ml
+@@ -1,5 +1,6 @@
+ #use "reader.ml";;
+ 
++
+ type constant =
+   | Sexpr of sexpr
+   | Void
+@@ -58,7 +59,463 @@ let reserved_word_list =
+ 
+ (* work on the tag parser starts here *)
+ 
+-let tag_parse_expressions sexpr = raise X_not_yet_implemented;;
++let check_rib x = match x with
++|Pair(Symbol "else",y)-> "3"
++|Pair (_, Pair (Symbol "=>", _)) -> "2"
++|_-> "1"
++
++
++
++
++let check_type_lambda_3 x =
++  match x with
++  |Symbol vs -> true
++  |_ -> false 
++  
++  let rec check_type_lambda_1t_2f x =
++    match x with
++    |Pair(_,Pair(x,y))-> check_type_lambda_1t_2f (Pair(x,y))
++    |Pair(x,Nil)-> true
++    |Pair(x,y)-> false
++    | Nil -> true
++    |_ -> raise X_no_match
++
++
++
++    
++    let test_string nt str =
++      let (e, s) = (nt (string_to_list str)) in
++      (e, (Printf.sprintf "->[%s]" (list_to_string s)));;
++    
++
++
++
++    
++ let rec tag_expr unP =  match unP with  
++    |Pair (Symbol "let", app_exp) -> (
++                          match app_exp  with
++                          |Pair(argsAndaAp, body) ->  [tag_parse_applic_let argsAndaAp (Pair (Symbol "begin",body))]
++                          |_ -> raise X_this_should_not_happen)
++      |Pair (Symbol "let*", x ) -> tag_expr ( expend_let_star unP) 
++      |Pair (Symbol "letrec", x ) ->   expend_letrec unP                   
++      |Pair (Symbol "lambda", app_exp) -> (
++                          match app_exp  with
++                          |Pair(argsAndaAp, body) ->  [tag_parse_lambda argsAndaAp (Pair (Symbol "begin",body))]
++                          |_ -> raise X_no_match)   
++      |Pair (Symbol "cond", app_exp) -> tag_expr (expend_cond  app_exp)      
++      |Pair (Symbol "pset!", arg) -> tag_expr (expe_pset arg arg   )                        
++      |Pair (Symbol "begin", _) -> tok_begin unP
++      |Pair (Symbol "quasiquote", Pair(st, Nil)) -> tag_expr( expend_quasiquote st) 
++      |Pair (Symbol "quote", Pair(x,Nil)) -> [Const (Sexpr x)]
++      |Pair (Symbol "if", Pair(x, Pair(y,Pair (z, Nil)))) ->  [tok_if_then x y z ]  (*fix*)   
++      
++      |Pair (Symbol "if", Pair(x,Pair(y, Nil)))  -> [tok_if x y  ]      (*fix*)   
++      | Pair(Symbol "and", Nil)  ->  [Const (Sexpr(Bool true))]  
++      |Symbol "and" ->  [Const (Sexpr(Bool true))]  
++      |Pair (Symbol "and", Pair(x,Nil)) -> tag_expr x  
++      |Pair (Symbol "and", x ) -> tag_expr (expend_and x)      
++      |Pair (Symbol "define", Pair(Pair(name, argl),exprs)) -> tag_expr(expe_define name argl exprs )  (*fix*)  
++                                              
++      |Pair (Symbol "define", Pair(x,Pair(y, Nil))) -> [tok_defineSet x y ]  (*fix*)  
++                                
++      |Pair (Symbol "set!", Pair(x,Pair(y, Nil))) -> [tok_Set x y ] (*fix*)  
++      |Pair (Symbol "quted!", x) -> [ Const (Sexpr(x))] 
++      | Pair(Symbol "or", Nil)  ->  [Const (Sexpr(Bool false))]    
++      |Symbol "or" ->  [Const (Sexpr(Bool false))]
++      |Pair (Symbol "or", x) -> [tok_or x []]                                                  
++      |(Pair (  x, y ))   -> let g = tag_expr x  in 
++                            let g2 =  (tok_seq  y []) in
++                            [ Applic ((List.hd g) ,g2) ]                                                                                                        
++    |Symbol(x) ->  [ Var x]
++    |Number(x) -> [ Const (Sexpr(unP))]
++    |Char(x) ->  [ Const (Sexpr(unP))]
++    |Bool(x) ->  [ Const (Sexpr(unP))]
++    |String(x) ->  [ Const (Sexpr(unP))]
++    | _ ->  raise X_this_should_not_happen
++
++    (*begin*)
++and tok_begin x = match x with   
++    |Pair (Symbol "begin", Nil) ->  [Const Void] 
++    |Pair (Symbol "begin", Pair(x,Nil)) -> tag_expr x    (*signal exp*)                                   
++    |Pair (Symbol "begin", app_exp) -> [Seq (tok_seq_begin app_exp []) ] 
++    |_ -> raise X_no_match    
++
++and tok_seq_begin pa fil =
++  match pa with
++    |Pair (x , Nil) ->( let nex = tag_expr x in  
++                    let nex = List.hd nex in  
++                    match nex with 
++                    | Seq(y)->  (List.append fil y)
++                    | y -> (List.append fil [y])  )                
++    |Pair(x,y)->
++    ( let nex = tag_expr x in  
++                    let nex = List.hd nex in  
++                    match nex with 
++                    | Seq(z)-> tok_seq_begin y (List.append fil z)
++                    | z -> tok_seq_begin y (List.append fil [z])  )
++    |x ->( let nex = tag_expr x in  
++    let nex = List.hd nex in  
++    match nex with 
++    | Seq(y)->  (List.append fil y)
++    | y -> (List.append fil [y])  ) 
++    
++(*define or *)
++and tok_or expO fil = match expO with
++    |Pair(x,Nil)-> let li = (List.append fil (tag_expr x)  ) in
++                    if List.length li ==1 then List.hd li else
++                    Or li
++    |Pair(x,y)->  tok_or y ( List.append fil (tag_expr x))
++    |x -> let li = List.append fil  (tag_expr x)  in
++          if List.length li ==1 then List.hd li else
++    Or li 
++
++
++
++and expe_define name argl exprs =
++    let lam= Pair( Symbol "lambda",Pair(argl,exprs)) in
++    Pair(Symbol "define", Pair(name,Pair(lam,Nil)))
++
++
++(*letrec*)
++and expend_letrec_partA x  =
++let  whatever_exp =Pair (Symbol "quote", Pair (Symbol "whatever", Nil)) in
++ match x with | Pair(next,res)->(
++match next with
++|Pair(f1,expr)-> if res != Nil then Pair(Pair(f1,Pair(whatever_exp,Nil)),expend_letrec_partA res ) else Pair(Pair(f1,Pair(whatever_exp,Nil)), Nil)
++|_ -> raise X_syntax_error )
++|_-> raise X_syntax_error
++
++
++and expend_letrec_partB x y =
++    match x with | Pair(next,res)->(
++    match next with
++    |Pair(f1,expr)->
++    let set = (Pair(Symbol "set!", Pair(f1,expr))) in
++    if res == Nil then set else 
++    let res2 = expend_letrec_partB res y in
++    Pair(set, Pair(res2, Nil)) 
++    |Nil -> Nil
++    |_ -> raise X_not_yet_implemented )
++
++    |_-> raise X_no_match
++
++
++and expend_letrec x  =
++    match x with
++    |(Pair(Symbol "letrec", Pair(first_part, Pair (last_part, Nil)
++    ))) -> 
++    let first =  if first_part ==Nil  then Nil else expend_letrec_partA first_part in
++    let second = if first_part ==Nil  then Nil else expend_letrec_partB first_part last_part in
++    let second = (match second with
++    |Pair(set, Pair(res2, Nil))-> Pair(set, Pair(res2, Pair(last_part,Nil)))
++    |x->  Pair(x, Pair(last_part,Nil)) )in
++    let body = Pair(Symbol "begin", second) (*seq []*) in
++    [tag_parse_applic_let first body] 
++    |_-> raise X_no_match
++
++(*and*)
++and expend_and expA  = match expA with   
++  |Pair (x,y)->
++    let r = Pair (Symbol "and", y) in
++    Pair (Symbol "if",Pair (x, Pair( r, Pair (Bool false, Nil))))  
++  |_ -> raise X_this_should_not_happen
++
++
++and expend_cond x  =
++let kind =
++match x with
++|Pair(first,rest)-> check_rib first 
++|_ -> "0" in
++if x ==Nil then x
++else
++ match kind with
++ |"1"-> (match x with |Pair(first_rib,rest_rib) -> handel_rib1 first_rib rest_rib
++                       | _ ->raise X_this_should_not_happen)
++ |"2"->  (match x with |Pair((Pair (a1, Pair (Symbol "=>", Pair ( a2, Nil)))),rest_rib) -> 
++                        handel_rib2 a1 a2 rest_rib
++                       | _ ->raise X_this_should_not_happen)
++ |_->  (match x with |Pair(Pair(Symbol "else", first_rib),_) -> handel_rib3 first_rib 
++                       | _ ->raise X_this_should_not_happen)
++
++
++and handel_rib2 expr exprf rest =  
++let a = Pair(Symbol "value", Pair(expr,Nil)) in
++let b =Pair(Symbol "f",Pair((Pair(Symbol "lambda",Pair(Nil,Pair(exprf,Nil))),Nil))) in
++
++if rest != Nil then
++let exp_rest = expend_cond rest in
++let c =Pair(Symbol "rest",Pair((Pair(Symbol "lambda",Pair(Nil,Pair(exp_rest,Nil))),Nil))) in
++
++let v = Pair(a,Pair(b,Pair(c,Nil))) in
++let d =  Pair (Symbol "if",
++Pair (Symbol "value",
++Pair (Pair (Pair (Symbol "f", Nil), Pair (Symbol "value", Nil)),
++Pair (Pair (Symbol "rest", Nil), Nil)))) in
++
++Pair(Symbol "let",Pair( v ,Pair( d ,Nil)))
++
++else
++let v = Pair(a,Pair(b,Nil)) in
++let d =  Pair (Symbol "if",
++Pair (Symbol "value",
++Pair (Pair (Pair (Symbol "f", Nil), Pair (Symbol "value", Nil)),
++ Nil))) in
++Pair(Symbol "let",Pair( v ,Pair( d ,Nil)))
++
++
++and handel_rib3 x =  Pair(Symbol "begin",x)
++
++
++and handel_rib1 x rest = match x with
++|Pair(expr,se)-> (match rest with |Nil-> Pair (Symbol "if", Pair(expr, Pair (Pair (Symbol "begin" ,se), Nil)))
++                                 |_->
++                                 let r = expend_cond rest in
++                                  Pair (Symbol "if", Pair(expr, Pair (Pair (Symbol "begin" ,se) ,  Pair(r , Nil)))))
++|Nil -> raise X_not_yet_implemented
++|_ -> raise X_syntax_error
++
++(*expend_quasiquote*)
++and expend_quasiquote x =
++  match x with 
++  (*|Pair(x,Nil)-> expend_quasiquote x *) 
++  |Pair (Symbol "unquote",Pair(x,Nil)) -> x
++  |Nil -> Pair (Symbol "quote", Pair (Nil, Nil))
++  |Symbol a -> Pair (Symbol "quote", Pair (Symbol a, Nil))
++
++  |Pair (Pair (Symbol "unquote-splicing", Pair(a,Nil )), b) ->  let expend_b= expend_quasiquote b in
++                                                    Pair (Symbol "append", Pair (a , Pair( expend_b , Nil)))
++  |Pair(a,Pair (Symbol "unquote-splicing", Pair(b,Nil))) -> let expend_a= expend_quasiquote a in
++                                                     Pair (Symbol "cons", Pair (expend_a, Pair( b, Nil)))
++  | Pair(a,b)-> let expend_b= expend_quasiquote b in
++                let expend_a= expend_quasiquote a in  
++                Pair (Symbol "cons", Pair (expend_a , Pair ( expend_b, Nil)))
++  |_-> raise X_no_match
++
++
++(*let*)
++  and tok_build_args_let li fi = 
++ match li with
++ | Pair(cdrArgs,tl) -> (
++          match cdrArgs with  
++          |Pair(arg,app)-> tok_build_args_let tl (List.append fi (arg_build arg))
++          | Nil ->fi 
++          | _ -> raise X_no_match
++            )  
++ | Nil ->fi                    
++ | _ -> raise X_no_match   
++ and arg_build x  =
++ match x  with
++| Symbol(e) -> [e]
++|_ -> raise X_no_match
++
++
++
++and tok_seq pa fil =
++
++  match pa with
++  | Nil -> fil
++  |Pair(hd,tl) -> tok_seq  tl  (List.append fil (tag_expr hd))
++  |_->  fil
++
++(*if*)
++and tok_if_then x y z =
++  let ifE = List.hd (tag_expr x) in
++  let thenE = List.hd (tag_expr  y) in
++  let elseE = List.hd  (tag_expr  z )in
++  If (ifE,thenE,elseE)
++
++
++ and tok_if x y  =
++  let ifE = List.hd (tag_expr x) in
++  let thenE = List.hd (tag_expr  y) in
++  If (ifE,thenE,Const Void)
++
++
++and tok_defineSet x y  =
++  let x = List.hd(tag_expr x) in
++  let y = List.hd( tag_expr  y) in
++  Def (x,y)
++
++
++ and tok_Set x y  =
++  let x = List.hd(tag_expr x) in
++  let y = List.hd( tag_expr  y) in
++  Set (x,y)
++
++  
++
++ and tag_parse_applic_let argsAndApp body = 
++  let lambda = tag_parse_lambda_let argsAndApp body in
++  let app = tok_build_app argsAndApp [] in
++  Applic (lambda, app)
++
++ and tag_parse_simple_lambda argsAndApp body =
++ LambdaSimple (tok_build_args argsAndApp [],List.hd (tag_expr body ))
++
++ and tag_parse_lambda_let argsAndApp body =
++ if (check_type_lambda_3 argsAndApp)  then  
++ let str = match argsAndApp with
++ | Symbol (x) -> x
++ |_ -> raise X_no_match in 
++LambdaOpt ([], str, List.hd (tag_expr body ))
++ else if  (check_type_lambda_1t_2f argsAndApp) then  LambdaSimple (tok_build_args_let argsAndApp [],
++ List.hd (tag_expr body ))
++ else LambdaOpt   (tok_build_args argsAndApp [],find_last argsAndApp,List.hd (tag_expr body ))
++
++
++ and tag_parse_lambda argsAndApp body =
++ if (check_type_lambda_3 argsAndApp)  then  
++ let str = match argsAndApp with
++ | Symbol (x) -> x
++ |_ -> raise X_no_match in
++LambdaOpt ([], str, List.hd (tag_expr body ))
++ else if  (check_type_lambda_1t_2f argsAndApp) then  LambdaSimple (tok_build_args argsAndApp [],List.hd (tag_expr body ))
++ else LambdaOpt   (tok_build_args argsAndApp [],find_last argsAndApp,List.hd (tag_expr body))
++
++ and tok_build_args li fi = 
++
++ match li with       
++         |Pair(arg,app)->  List.append fi (tok_build_args app (arg_build arg))
++         | Nil ->fi
++         |x->  fi
++ 
++ and find_last li  = 
++        match li with
++           |Pair(arg,app)-> find_last app
++           |x-> List.hd (arg_build x)       
++                     
++
++                 
++
++and tok_build_app li fi =
++ match li with
++ | Pair(cdrArgs,tl) -> (
++          match cdrArgs with  
++          |Pair(arg,Pair(app,Nil))->   (tok_build_app tl (List.append fi(fiil_app_list app)) )
++          | Nil ->fi 
++          | _ -> raise X_no_match  ) 
++ | Nil ->fi                        
++ | _ -> raise X_no_match
++
++
++and fiil_app_list x =
++if x ==Nil then [] else
++ tag_expr x
++
++  
++
++
++
++
++and create_body x  i name= 
++let name2  = String.concat (string_of_int i) name  in
++match x with
++|Pair(Pair(arg,op), Nil) -> Pair(    Pair(Symbol "set!", Pair(arg , Pair( Symbol name2, Nil)))    ,  Nil    )
++|Pair(Pair(arg,op), y) -> let next =   create_body y (i +1) name in
++
++                          Pair( Pair(Symbol "set!", Pair(arg , Pair( Symbol name2, Nil)))  , next)
++| _ -> raise X_no_match
++
++
++
++
++
++
++
++and arg_build_pset x  =
++match x  with
++| Symbol(e) -> [e]
++|_ -> ["abcdefghijk"]
++
++
++
++and tok_build_pset li fi = 
++match li with       
++        |Pair(Pair(arg,app), next) -> let ar = (arg_build_pset arg ) in
++                          if ar == ["abcdefghijk"] then ["abcdefghijk"] else
++                               (tok_build_pset next  (List.append fi ar)  )
++        | Nil ->fi
++        
++        |x->  fi
++
++
++
++
++
++        and expe_pset args body = 
++        let g = tok_build_pset args [] in
++        
++        let pair = create_pair args 0 g in
++        let p_body = create_body args 0 g in
++        let body = Pair (Symbol "begin" ,p_body  ) in
++        
++        let let1 = Pair (Symbol "let"  ,  Pair( pair  ,   Pair (      body     ,      Nil))) in
++        let1   
++        
++        
++
++
++and create_pair x  i name= 
++let name2  = String.concat (string_of_int i) name  in
++match x with
++|Pair(Pair(arg,op), Nil) -> Pair( Pair( Symbol name2 ,op) ,  Nil    )
++|Pair(Pair(arg,op), y) -> Pair( Pair( Symbol name2 ,op) ,  create_pair y (i + 1) name     )
++| _-> raise X_no_match
++
++and expend_let_star x =
++match x with
++|(Pair( Symbol "let*",Pair(Nil, x)))-> (Pair( Symbol "let",Pair(Nil, x)))
++|(Pair( Symbol "let*",Pair(Pair(Pair(x, Pair(y, Nil)),Nil), seq)))->
++                              (Pair( Symbol "let",Pair(Pair(Pair(x, Pair(y, Nil)),Nil), seq)))
++
++
++
++|(Pair( Symbol "let*",Pair(Pair(Pair(x, Pair(y, Nil)),rest), seq)))->
++             (Pair( Symbol "let",Pair (Pair (Pair(x,Pair (y, Nil)) ,Nil),
++            Pair(  expend_let_star (Pair(Symbol "let*",Pair( rest, seq))),Nil))))
++
++
++
++|(Pair( Symbol "let*",Pair(Pair(x,rest), Nil)))->
++             (Pair( Symbol "let",Pair (Pair (x,Nil),
++            Pair(  expend_let_star (Pair(Symbol "let*",Pair( rest, Nil))),Nil))))  
++                         
++|(Pair( Symbol "let*",Pair(Pair(x,rest), seq)))->
++             (Pair( Symbol "let",Pair (Pair (x,Nil),
++            Pair(  expend_let_star (Pair(Symbol "let*",Pair( rest, seq))),Nil))))
++            
++
++
++
++|(Pair(_,Pair( Pair (x,rest),seq)))->
++             (Pair( Symbol "let",Pair (Pair (x,Nil),
++            Pair(  expend_let_star (Pair(Symbol "let*",Pair( rest, seq))),Nil))))
++
++
++            
++|_ -> raise X_no_match
++;;
++
++
++
++
++
++
++ 
++
++
++ let rec k2 list fil =
++  if List.length list == 1 then
++  (List.append  fil (tag_expr (List.hd list))) 
++  else
++  k2 (List.tl list)  (List.append  fil (tag_expr (List.hd list))) 
++
++
++let tag_parse_expressions sexpr =   
++  if List.length sexpr == 1 then
++tag_expr (List.hd sexpr) else
++k2 sexpr []
++;;
+ 
+   
+ end;; (* struct Tag_Parser *)

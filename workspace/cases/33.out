@@ -1,0 +1,13 @@
+
+LambdaSimple' (["x"; "y"; "z"],
+ If' (Applic' (Var' (VarFree "f?"), [Var' (VarParam ("x", 0))]),
+  ApplicTP' (Var' (VarFree "g"), [Var' (VarParam ("y", 1))]),
+  If' (Applic' (Var' (VarFree "g?"), [Var' (VarParam ("x", 0))]),
+   Seq'
+    [Applic' (Var' (VarFree "f"), [Var' (VarParam ("x", 0))]);
+     ApplicTP' (Var' (VarFree "f"), [Var' (VarParam ("y", 1))])],
+   Seq'
+    [Applic' (Var' (VarFree "h"), [Var' (VarParam ("x", 0))]);
+     Applic' (Var' (VarFree "f"), [Var' (VarParam ("y", 1))]);
+     ApplicTP' (Var' (VarFree "g"),
+      [Applic' (Var' (VarFree "f"), [Var' (VarParam ("x", 0))])])])))

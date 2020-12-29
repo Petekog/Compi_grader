@@ -1,0 +1,10 @@
+
+LambdaSimple' (["a"],
+ Seq'
+  [LambdaSimple' ([],
+    LambdaSimple' (["x"; "y"; "z"],
+     Or'
+      [Applic' (Var' (VarParam ("x", 0)), [Var' (VarParam ("y", 1))]);
+       ApplicTP' (Var' (VarBound ("a", 1, 0)), [Var' (VarParam ("z", 2))])]));
+   LambdaSimple' (["x"],
+    ApplicTP' (Var' (VarBound ("a", 0, 0)), [Var' (VarParam ("x", 0))]))])

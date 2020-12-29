@@ -1,0 +1,5 @@
+If' (Applic' (LambdaSimple' (["y"], Var' (VarFree "x")), []),
+            Applic' (LambdaSimple' (["x"], Seq' ([Set' (Var' (VarParam ("x", 0)), 
+            Var' (VarFree "y"));LambdaSimple' ([], Set' (Var' (VarBound ("x", 0, 0)), 
+            Const' (Sexpr (Number (Fraction (1, 1))))))])), [Const' (Sexpr (Symbol "a"))]), 
+            LambdaSimple' (["x"], Set' (Var' (VarParam ("x", 0)), Var' (VarFree "y"))))

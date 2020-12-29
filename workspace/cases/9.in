@@ -1,0 +1,10 @@
+LambdaSimple ([],
+  Seq
+   [Applic (LambdaSimple ([], Var "x"), []);
+    Applic
+     (LambdaSimple (["x"],
+       Seq
+        [Set (Var "x", Const (Sexpr (Number (Fraction (1, 1)))));
+         LambdaSimple ([], Var "x")]),
+     [Const (Sexpr (Number (Fraction (2, 1))))]);
+    Applic (LambdaOpt ([], "x", Var "x"), [Const (Sexpr (Number (Fraction (3, 1))))])])

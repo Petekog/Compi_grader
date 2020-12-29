@@ -1,0 +1,537 @@
+diff --git a/readme.txt b/readme.txt
+index e69de29..28c28b4 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1,5 @@
++Partners:
++318713203
++206544496
++
++We assert that the work we submitted is 100% our own. We have not received anypart from any other student in the class, nor have we give parts of it for use to others.Nor have we used code from other sources: Courses taught previously at this university,courses taught at other universities, various bits of code found on the internet, etc.We realize that should our code be found to contain code from other sources, that aformal case shall be opened against us withva’adat mishma’at, in pursuit of disciplinaryaction
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..2ca2f60 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -69,17 +69,508 @@ end;;
+ 
+ module Semantics : SEMANTICS = struct
+ 
+-let annotate_lexical_addresses e = raise X_not_yet_implemented;;
+-
+-let annotate_tail_calls e = raise X_not_yet_implemented;;
+-
+-let box_set e = raise X_not_yet_implemented;;
+-
+-let run_semantics expr =
+-  box_set
+-    (annotate_tail_calls
+-       (annotate_lexical_addresses expr));;
++  let rec index_of e v start_index = 
++    match e with
++      | e1::e2 -> let cmp = compare e1 v in if(cmp == 0) then start_index else index_of e2 v (start_index + 1)
++      | _ -> -1 ;;
++    
++  let rec get_param_index params name start_index =
++    match params with
++      | e1::e2 -> let index = index_of e1 name 0 in if(index == -1) then get_param_index e2 name (start_index + 1) else (start_index, index)
++      | _ -> (-1, -1) ;;
+   
+-end;; (* struct Semantics *)
+-
+-
++   
++  
++  let rec annotate_expr_lexical_addresses (expr, params_hir) = 
++    let lexical_annotator = PC.disj_list [
++      annotate_constant;
++      annotate_var;
++      annotate_If;
++      annotate_Seq;
++      annotate_Set;
++      annotate_Def;
++      annotate_Or;
++      annotate_lambdaSimple;
++      annotate_lambdaOpt;
++      annotate_applic
++    ] in lexical_annotator (expr, params_hir)
++  
++    and foreach_annotate (exprs, params_hir) = 
++      match exprs with
++          | [] -> []
++          | e::s -> annotate_expr_lexical_addresses (e, params_hir) :: foreach_annotate (s, params_hir)
++  
++    and make_var (name, params_hir) = 
++      let (i1, i2) = get_param_index params_hir name 0 in 
++          if(i1 == -1) then VarFree(name)
++          else if (i1 == 0) then VarParam(name, i2)
++          else VarBound(name, (i1-1), i2)
++    
++    and annotate_constant (expr, params_hir) = 
++      match expr with
++          | Const(constant) -> Const'(constant)
++          | _ -> raise PC.X_no_match
++  
++    and annotate_var (expr, params_hir) = 
++      match expr with
++          | Var(name) ->Var'(make_var (name, params_hir) )
++          | _ -> raise PC.X_no_match
++  
++    and annotate_If (expr, params_hir) =
++      match expr with
++          | If(test, _then, _else) -> If'( annotate_expr_lexical_addresses (test, params_hir) , annotate_expr_lexical_addresses (_then, params_hir) , annotate_expr_lexical_addresses (_else, params_hir)  )
++          | _ -> raise PC.X_no_match
++  
++    and annotate_Seq (expr, params_hir) =
++      match expr with
++          | Seq(exprs) -> Seq'( foreach_annotate (exprs, params_hir) )
++          | _ -> raise PC.X_no_match
++  
++    and annotate_Set (expr, params_hir) =
++      match expr with
++          | Set(Var(name), expr2) -> Set'( make_var(name, params_hir), annotate_expr_lexical_addresses(expr2, params_hir) )
++          | _ -> raise PC.X_no_match
++  
++    and annotate_Def (expr, params_hir) =
++      match expr with
++          | Def(Var(name), expr2) -> Def'( make_var(name, params_hir), annotate_expr_lexical_addresses(expr2, params_hir) )
++          | _ -> raise PC.X_no_match
++  
++    and annotate_Or (expr, params_hir) =
++      match expr with
++          | Or(exprs) -> Or'( foreach_annotate (exprs, params_hir) )
++          | _ -> raise PC.X_no_match
++  
++    and annotate_lambdaSimple (expr, params_hir) =
++      match expr with
++          | LambdaSimple(params, body) -> LambdaSimple'( params, annotate_expr_lexical_addresses(body, (params::params_hir)) )
++          | _ -> raise PC.X_no_match
++  
++    and annotate_lambdaOpt (expr, params_hir) =
++      match expr with
++          | LambdaOpt(params, opt, body) -> 
++              let _params = (List.append params [opt]) in
++              LambdaOpt'( params, opt, annotate_expr_lexical_addresses ( body, ( _params :: params_hir ) ) )
++          | _ -> raise PC.X_no_match
++  
++    and annotate_applic (expr, params_hir) =
++      match expr with
++          | Applic(expr, exprs) -> Applic'( annotate_expr_lexical_addresses (expr, params_hir) , foreach_annotate (exprs, params_hir) )
++          | _ -> raise PC.X_no_match 
++          
++    ;;
++  
++  
++        
++  let annotate_lexical_addresses e = annotate_expr_lexical_addresses (e, []);;
++  
++  
++  
++  let rec annotate_expr_tail_calls (e, in_tp) = 
++    let tail_annotator = PC.disj_list [
++      annotate_constant_tail;
++      annotate_var_tail;
++      annotate_if_tail;
++      annotate_seq_tail;
++      annotate_set_tail;
++      annotate_def_tail;
++      annotate_or_tail;
++      annotate_lambdaSimple_tail;
++      annotate_lambdaOpt_tail;
++      annotate_applic_tail
++    ] in tail_annotator (e, in_tp)
++    
++    and lastone_tail_annotate (es, in_tp) = 
++      let size = List.length es in
++      let annotated_exprs = ref [] in
++      for i = 0 to size - 2 do
++        let e' = annotate_expr_tail_calls ((List.nth es i), false) in
++        annotated_exprs := !annotated_exprs @ [e'] ;
++      done;
++      let e' = annotate_expr_tail_calls ((List.nth es (size - 1)), in_tp) in
++      annotated_exprs := !annotated_exprs @ [e'] ;
++      !annotated_exprs
++  
++    and foreach_tail_annotate (es, in_tp) = 
++      match es with
++        | [] -> []
++        | e::s -> annotate_expr_tail_calls (e, in_tp) :: foreach_tail_annotate (s, in_tp)
++  
++    and annotate_constant_tail (e, in_tp) = 
++      match e with
++        | Const'(constant) -> Const'(constant)
++        | _ -> raise PC.X_no_match
++        
++    and annotate_var_tail (e, in_tp) = 
++      match e with
++        | Var'(var) -> Var'(var)
++        | _ -> raise PC.X_no_match
++    
++    and annotate_if_tail (e, in_tp) = 
++      match e with
++        | If'(test, _then, _else) -> If'( annotate_expr_tail_calls (test, false), annotate_expr_tail_calls (_then, in_tp), annotate_expr_tail_calls(_else, in_tp) )
++        | _ -> raise PC.X_no_match
++  
++    and annotate_seq_tail (e, in_tp) = 
++      match e with
++        | Seq'(exprs) -> Seq'( lastone_tail_annotate (exprs, in_tp) )
++        | _ -> raise PC.X_no_match
++    
++    and annotate_set_tail (e, in_tp) = 
++      match e with
++        | Set'(var, expr) -> Set'( var, annotate_expr_tail_calls (expr, false) )
++        | _ -> raise PC.X_no_match
++  
++    and annotate_def_tail (e, in_tp) = 
++      match e with
++        | Def'(var, expr) -> Def'( var, annotate_expr_tail_calls (expr, false) )
++        | _ -> raise PC.X_no_match
++  
++    and annotate_or_tail (e, in_tp) = 
++      match e with
++        | Or'(exprs) -> Or'( lastone_tail_annotate (exprs, in_tp) )
++        | _ -> raise PC.X_no_match
++  
++    and annotate_lambdaSimple_tail (e, in_tp) =
++      match e with
++        | LambdaSimple'(params, body) -> LambdaSimple'( params, annotate_expr_tail_calls (body, true) )
++        | _ -> raise PC.X_no_match
++  
++    and annotate_lambdaOpt_tail (e, in_tp) =
++      match e with
++        | LambdaOpt'(params, opt, body) -> LambdaOpt'( params, opt, annotate_expr_tail_calls (body, true) )
++        | _ -> raise PC.X_no_match
++    
++    and annotate_applic_tail (e, in_tp) = 
++      match e with
++        | Applic'(expr, exprs) -> if (in_tp) 
++          then ApplicTP'(annotate_expr_tail_calls (expr, false) , foreach_tail_annotate (exprs, false))
++          else Applic'  (annotate_expr_tail_calls (expr, false) , foreach_tail_annotate (exprs, false))
++        | _ -> raise PC.X_no_match
++        
++    ;;
++  
++  let annotate_tail_calls e = annotate_expr_tail_calls (e, false);;
++  
++  
++  let rec expr_box_Set e =
++    let box_setter = PC.disj_list [
++      set_lambdaSimple;
++      set_lambdaOpt;
++      set_Const;
++      set_Var;
++      set_If;
++      set_Seq;
++      set_Set;
++      set_Def;
++      set_Or;
++      set_Applic;
++      set_ApplicTP;
++      set_Box;
++      set_BoxGet;
++      set_BoxSet
++    ] in box_setter e
++  
++    and get_var_name var = 
++      match var with
++        | VarFree(name) -> name
++        | VarParam(name, minor) -> name
++        | VarBound(name, minor, major) -> name
++  
++    and killa read_var write_var =  
++      match read_var, write_var with
++        | VarParam(n1, i1), VarBound(n2, i2, j2) -> false
++        | VarBound(n1, i1, j1), VarParam(n2, i2)-> false
++        | VarParam(n1, i1), VarParam(n2, i2) -> true
++        | VarBound(n1, i1, j1), VarBound(n2, i2, j2) -> (i1 + i2 >= 1)
++        | VarFree(n1), _ -> false
++        | _, VarFree(n2) -> false
++  
++    and check_read_occurrence param e last_lambda occurrences =
++      match e with
++        | Var'(VarParam(name, minor)) -> if ((compare name param) == 0) then (List.append [(last_lambda, e)] occurrences) else occurrences
++        | Var'(VarBound(name, minor, major)) -> if ((compare name param) == 0) then (List.append [(last_lambda, e)] occurrences) else occurrences
++        | Const'(expr) -> occurrences
++        | Var'(VarFree(name)) -> occurrences
++        | If'(test, _then, _else) -> check_read_occurrence param _else last_lambda (check_read_occurrence param _then last_lambda (check_read_occurrence param test last_lambda occurrences) )
++        | Seq'(exprs) -> List.fold_left (fun l expr -> check_read_occurrence param expr last_lambda l) occurrences exprs
++        | Set'(var, expr) -> check_read_occurrence param expr last_lambda occurrences
++        | Def'(var, expr) -> check_read_occurrence param expr last_lambda occurrences
++        | Or'(exprs) -> List.fold_left (fun l expr -> check_read_occurrence param expr last_lambda l) occurrences exprs
++        | LambdaSimple'(params, body) -> if(List.mem param params) then occurrences else check_read_occurrence param body e occurrences
++        | LambdaOpt'(params, opt, body) -> if((List.mem param params) || ((compare opt param) == 0) ) then occurrences else check_read_occurrence param body e occurrences
++        | Applic'(expr, exprs) -> List.fold_left (fun l e' -> check_read_occurrence param e' last_lambda l)  (check_read_occurrence param expr last_lambda occurrences) exprs
++        | ApplicTP'(expr, exprs) -> List.fold_left (fun l e' -> check_read_occurrence param e' last_lambda l)  (check_read_occurrence param expr last_lambda occurrences) exprs
++        | Box'(var) -> occurrences
++        | BoxSet'(var, expr) -> check_read_occurrence param expr last_lambda occurrences
++        | BoxGet'(var) -> occurrences
++  
++    and check_write_occurrence param e last_lambda occurrences =
++      match e with
++        | Set'(VarBound(name, minor, major), expr) -> 
++          if ((compare name param) == 0) then 
++            check_write_occurrence param expr last_lambda (List.append [(last_lambda, e)] occurrences) 
++          else
++            check_write_occurrence param expr last_lambda occurrences 
++  
++        | Set'(VarParam(name, minor), expr) ->
++          if ((compare name param) == 0) then 
++            check_write_occurrence param expr last_lambda (List.append [(last_lambda, e)] occurrences) 
++          else 
++            check_write_occurrence param expr last_lambda occurrences 
++  
++        | Set'(VarFree(name), expr) -> check_write_occurrence param expr last_lambda occurrences
++        
++        | Var'(VarParam(name, minor)) -> occurrences
++        | Var'(VarBound(name, minor, major)) -> occurrences
++        | Const'(expr) -> occurrences
++        | Var'(VarFree(name)) -> occurrences
++        | If'(test, _then, _else) -> check_write_occurrence param _else last_lambda (check_write_occurrence param _then last_lambda (check_write_occurrence param test last_lambda occurrences) )
++        | Seq'(exprs) -> List.fold_left (fun l expr -> check_write_occurrence param expr last_lambda l) occurrences exprs
++        | Def'(var, expr) -> check_write_occurrence param expr last_lambda occurrences
++        | Or'(exprs) -> List.fold_left (fun l expr -> check_write_occurrence param expr last_lambda l) occurrences exprs
++        | LambdaSimple'(params, body) -> if(List.mem param params) then occurrences else check_write_occurrence param body e occurrences
++        | LambdaOpt'(params, opt, body) -> if((List.mem param params) || ((compare opt param) == 0) ) then occurrences else check_write_occurrence param body e occurrences
++        | Applic'  (expr, exprs) -> List.fold_left (fun l e' -> check_write_occurrence param e' last_lambda l)  (check_write_occurrence param expr last_lambda occurrences) exprs
++        | ApplicTP'(expr, exprs) -> List.fold_left (fun l e' -> check_write_occurrence param e' last_lambda l)  (check_write_occurrence param expr last_lambda occurrences) exprs
++        | Box'(var) -> occurrences
++        | BoxSet'(var, expr) -> check_write_occurrence param expr last_lambda occurrences
++        | BoxGet'(var) -> occurrences
++  
++    and get_first_write_index exprs param start_index =
++      match exprs with
++        | e::s -> (
++          match e with
++            | Set'(var, set_expr) -> if ( (compare param (get_var_name var)) == 0 ) then start_index else get_first_write_index s param (start_index + 1)
++            | _ -> get_first_write_index s param (start_index + 1)
++          )
++        | [] -> -1
++        
++    and get_first_read_expr_index exprs param start_index =
++      match exprs with
++        | e::s -> let read_occs = check_read_occurrence param e e [] in
++                  let read_occs_size = (List.length read_occs) in
++                  if(read_occs_size >= 1) 
++                  then start_index
++                  else get_first_read_expr_index s param (start_index + 1)
++        | [] -> -1
++  
++    and get_first_read_index exprs param start_index =
++      match exprs with
++        | e::s -> (
++          match e with
++            | Var'(var) -> if ( (compare param (get_var_name var)) == 0 ) then start_index else get_first_read_index s param (start_index + 1)
++            | _ -> get_first_read_index s param (start_index + 1)
++          )
++        | [] -> -1
++        
++    and get_first_write_expr_index exprs param start_index =
++      match exprs with
++        | e::s -> let write_occs = check_write_occurrence param e e [] in
++                  let write_occs_size = (List.length write_occs) in
++                  if(write_occs_size >= 1) 
++                  then start_index
++                  else get_first_write_expr_index s param (start_index + 1)
++        | [] -> -1
++  
++    and check_form1 lambda_body param = 
++      match lambda_body with 
++        | Seq'(exprs) -> 
++          let first_write_index = get_first_write_index exprs param 0 in
++          let last_read_expr_index = ((List.length exprs) - (get_first_read_expr_index (List.rev exprs) param 0) - 1) in
++          if (first_write_index == -1 || last_read_expr_index == -1) then false else (first_write_index < last_read_expr_index)
++        | _ -> false
++  
++    and check_form2 lambda_body param = 
++      match lambda_body with 
++        | Seq'(exprs) -> 
++          let first_read_index = get_first_read_index exprs param 0 in
++          let last_write_expr_index = ((List.length exprs) - (get_first_write_expr_index (List.rev exprs) param 0) - 1) in
++          if (first_read_index == -1 || last_write_expr_index == -1) then false
++          else (first_read_index < last_write_expr_index)
++        | _ -> false
++  
++    and replace_get_occurances expr parameter = 
++      match expr with 
++        | Var'(var) -> if((compare parameter (get_var_name var)) == 0) then BoxGet'(var) else expr
++        | Const'(e) -> expr
++        | If'(test, _then, _else) -> If'( (replace_get_occurances test parameter), (replace_get_occurances _then parameter), (replace_get_occurances _else parameter) )
++        | Seq'(exprs) -> Seq'(List.map (fun e -> replace_get_occurances e parameter) exprs)
++        | Set'(var, e) -> Set'(var, replace_get_occurances e parameter)
++        | Def'(var, e) -> Def'(var, replace_get_occurances e parameter)
++        | Or'(exprs) -> Or'(List.map (fun e -> replace_get_occurances e parameter) exprs)
++        | LambdaSimple'(params, body) -> if(List.mem parameter params) then expr else LambdaSimple'(params, replace_get_occurances body parameter)
++        | LambdaOpt'(params, opt, body) -> if((List.mem parameter params) || ((compare opt parameter) == 0) ) then expr else LambdaOpt'(params, opt, replace_get_occurances body parameter)
++        | Applic'(expr, exprs)   -> Applic'(replace_get_occurances expr parameter,  List.map (fun e -> replace_get_occurances e parameter) exprs)
++        | ApplicTP'(expr, exprs) -> ApplicTP'(replace_get_occurances expr parameter,  List.map (fun e -> replace_get_occurances e parameter) exprs)
++        | Box'(var) -> expr
++        | BoxSet'(var, e) -> BoxSet'(var, replace_get_occurances e parameter)
++        | BoxGet'(var) -> expr
++  
++    and replace_write_occurances expr parameter = 
++      match expr with 
++        | Var'(var) -> expr
++        | Const'(e) -> expr
++        | If'(test, _then, _else) -> If'( (replace_write_occurances test parameter), (replace_write_occurances _then parameter), (replace_write_occurances _else parameter) )
++        | Seq'(exprs) -> Seq'(List.map (fun e -> replace_write_occurances e parameter) exprs)
++        | Set'(var, e) -> if((compare parameter (get_var_name var) == 0)) then BoxSet'(var, replace_write_occurances e parameter) else Set'(var, replace_write_occurances e parameter)
++        | Def'(var, e) -> Def'(var, replace_write_occurances e parameter)
++        | Or'(exprs) -> Or'(List.map (fun e -> replace_write_occurances e parameter) exprs)
++        | LambdaSimple'(params, body) -> if(List.mem parameter params) then expr else LambdaSimple'(params, replace_write_occurances body parameter)
++        | LambdaOpt'(params, opt, body) -> if((List.mem parameter params) || ((compare opt parameter) == 0) ) then expr else LambdaOpt'(params, opt, replace_write_occurances body parameter)
++        | Applic'(expr, exprs)   -> Applic'(replace_write_occurances expr parameter,  List.map (fun e -> replace_write_occurances e parameter) exprs)
++        | ApplicTP'(expr, exprs) -> ApplicTP'(replace_write_occurances expr parameter,  List.map (fun e -> replace_write_occurances e parameter) exprs)
++        | Box'(var) -> expr
++        | BoxSet'(var, e) -> BoxSet'(var, replace_write_occurances e parameter)
++        | BoxGet'(var) -> expr
++      
++    and add_set_expr lambda_body parameter p_index = 
++      let set_expr = Set'(VarParam(parameter, p_index), Box'(VarParam(parameter, p_index))) in
++      match lambda_body with
++        | Seq'(exprs) -> Seq'(set_expr::exprs)
++        | _ -> Seq'( (List.append [set_expr] [lambda_body]) )
++  
++    and box_a_parameter lambda lambda_body parameter p_index= 
++      let replaced_get = replace_get_occurances lambda_body parameter in
++      let replaced_set = replace_write_occurances replaced_get parameter in
++      let boxed = add_set_expr replaced_set parameter p_index in
++      match lambda with 
++        | LambdaSimple'(params, _)   -> LambdaSimple'(params, boxed)
++        | LambdaOpt'(params, opt, _) -> LambdaOpt'   (params, opt, boxed)
++        | _ -> raise PC.X_no_match
++      
++    and check_lambda_ro_boxing_param lambda p p_index body ro writing_occurrences =
++      match writing_occurrences with 
++        | [] -> (false, lambda)
++        | wo::s ->  
++          let (read_lambda, read_occurrence) = ro in 
++          let (write_lambda, write_occurance) = wo in
++          match write_occurance, read_occurrence with
++            | Set'(write_var, write_expr), Var'(read_var) -> 
++                if(read_lambda != write_lambda) then 
++                  (* Differenet lambdas *)
++                  let refer = killa read_var write_var in 
++                  if (not refer) then
++                    (* Not refering to same rib *)
++                    let applying_form_1 = check_form1 body p in
++                    if (not applying_form_1) then
++                      let applying_form_2 = check_form2 body p in
++                      if(not applying_form_2) then
++                        (true, (box_a_parameter lambda body p p_index))
++                      else check_lambda_ro_boxing_param lambda p p_index body ro s
++                    else check_lambda_ro_boxing_param lambda p p_index body ro s
++                  else check_lambda_ro_boxing_param lambda p p_index body ro s
++                else check_lambda_ro_boxing_param lambda p p_index body ro s  
++            | _ -> raise PC.X_no_match;
++  
++    and check_lambda_boxing_param lambda param p_index body reading_occurrences writing_occurrences = 
++      match reading_occurrences with
++        | [] -> lambda 
++        | ro::s -> 
++          let (found, new_lambda) = check_lambda_ro_boxing_param lambda param p_index body ro writing_occurrences in
++                  if (found) then new_lambda else check_lambda_boxing_param lambda param p_index body s writing_occurrences
++  
++    and check_lambda_boxing lambda params body param_index = 
++      match params with 
++        | [] -> lambda
++        | p::s -> 
++          (* Get read/write Occurrences *)
++          let reading_occurrences = check_read_occurrence  p body lambda [] in
++          let writing_occurrences = check_write_occurrence p body lambda [] in 
++          (* check for each read and write occurrences if they are a reason to box parameter {@code p} *)
++          let new_lambda = check_lambda_boxing_param lambda p param_index body reading_occurrences writing_occurrences in
++          match new_lambda with 
++            | LambdaSimple'(_p, new_body) -> check_lambda_boxing new_lambda s new_body (param_index - 1)
++            | LambdaOpt'(_p, _opt, new_body) -> check_lambda_boxing new_lambda s new_body (param_index - 1)
++            | _ -> raise PC.X_no_match
++    and set_lambdaSimple e = 
++      match e with
++        | LambdaSimple'(params, body) -> 
++          let new_lambda = check_lambda_boxing e (List.rev params) body ((List.length params) - 1) in
++          (
++            match new_lambda with
++            | LambdaSimple'(p2, new_body) -> LambdaSimple'(p2, expr_box_Set new_body)
++            | _ -> raise PC.X_no_match
++          )
++        | _ -> raise PC.X_no_match
++  
++    and set_lambdaOpt e = 
++      match e with
++        | LambdaOpt'(params, opt, body) -> 
++          let new_lambda = check_lambda_boxing e (List.rev (List.append params [opt])) body (List.length params) in
++          (
++            match new_lambda with
++            | LambdaOpt'(p2, opt2, new_body) -> LambdaOpt'(p2, opt2, expr_box_Set new_body)
++            | _ -> raise PC.X_no_match
++          )
++        | _ -> raise PC.X_no_match
++  
++    and set_Const e = 
++      match e with
++        | Const'(constant) -> e
++        | _ -> raise PC.X_no_match
++  
++    and set_Var e = 
++      match e with
++        | Var'(var) -> e
++        | _ -> raise PC.X_no_match
++  
++    and set_If e = 
++      match e with
++        | If'(test, _then, _else) -> If'(expr_box_Set test, expr_box_Set _then, expr_box_Set _else)
++        | _ -> raise PC.X_no_match
++        
++    and set_Seq e = 
++      match e with
++        | Seq'(exprs) -> Seq'((List.map (fun expr -> expr_box_Set expr) exprs))
++        | _ -> raise PC.X_no_match
++  
++    and set_Set e = 
++      match e with
++        | Set'(var, expr) -> Set'(var, expr_box_Set expr)
++        | _ -> raise PC.X_no_match
++  
++    and set_Def e = 
++      match e with
++        | Def'(var, expr) -> Def'(var, expr_box_Set expr)
++        | _ -> raise PC.X_no_match
++  
++    and set_Or e = 
++      match e with
++        | Or'(exprs) -> Or'((List.map (fun expr -> expr_box_Set expr) exprs))
++        | _ -> raise PC.X_no_match
++  
++    and set_Applic e = 
++      match e with
++        | Applic'(expr, exprs) -> Applic'(expr_box_Set expr, (List.map (fun expr -> expr_box_Set expr) exprs))
++        | _ -> raise PC.X_no_match
++  
++    and set_ApplicTP e = 
++      match e with
++        | ApplicTP'(expr, exprs) -> ApplicTP'(expr_box_Set expr, (List.map (fun expr -> expr_box_Set expr) exprs))
++        | _ -> raise PC.X_no_match
++  
++    and set_Box e = 
++      match e with
++        | Box'(var) -> e
++        | _ -> raise PC.X_no_match
++  
++    and set_BoxGet e = 
++      match e with
++        | BoxGet'(var) -> e
++        | _ -> raise PC.X_no_match
++  
++    and set_BoxSet e = 
++      match e with
++        | BoxSet'(var, expr) -> BoxSet'(var, expr_box_Set expr)
++        | _ -> raise PC.X_no_match
++  
++  let box_set e = expr_box_Set e;;
++  
++  let run_semantics expr =
++    box_set
++      (annotate_tail_calls
++         (annotate_lexical_addresses expr));;
++    
++  end;; (* struct Semantics *)
++  
+\ No newline at end of file

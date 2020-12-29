@@ -1,0 +1,307 @@
+diff --git a/readme.txt b/readme.txt
+index e69de29..6afb6a2 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1,3 @@
++Dor Carmi- 205789662
++Ido Tocker- 205712656
++We assert that the work we submitted is 100% our own. We have not received anypart from any other student in the class, nor have we give parts of it for use to others.Nor have we used code from other sources: Courses taught previously at this university,courses taught at other universities, various bits of code found on the Internet, etc.We realize that should our code be found to contain code from other sources, that aformal case shall be opened against us withva’adat mishma’at, in pursuit of disciplinaryaction.
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..1b4e52a 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -1,5 +1,5 @@
+ #use "tag-parser.ml";;
+-
++open Tag_Parser;;
+ type var = 
+   | VarFree of string
+   | VarParam of string * int
+@@ -28,15 +28,6 @@ let rec expr'_eq e1 e2 =
+   | Var'(VarFree v1), Var'(VarFree v2) -> String.equal v1 v2
+   | Var'(VarParam (v1,mn1)), Var'(VarParam (v2,mn2)) -> String.equal v1 v2 && mn1 = mn2
+   | Var'(VarBound (v1,mj1,mn1)), Var'(VarBound (v2,mj2,mn2)) -> String.equal v1 v2 && mj1 = mj2  && mn1 = mn2
+-  | Box'(VarFree v1), Box'(VarFree v2) -> String.equal v1 v2
+-  | Box'(VarParam (v1,mn1)), Box'(VarParam (v2,mn2)) -> String.equal v1 v2 && mn1 = mn2
+-  | Box'(VarBound (v1,mj1,mn1)), Box'(VarBound (v2,mj2,mn2)) -> String.equal v1 v2 && mj1 = mj2  && mn1 = mn2
+-  | BoxGet'(VarFree v1), BoxGet'(VarFree v2) -> String.equal v1 v2
+-  | BoxGet'(VarParam (v1,mn1)), BoxGet'(VarParam (v2,mn2)) -> String.equal v1 v2 && mn1 = mn2
+-  | BoxGet'(VarBound (v1,mj1,mn1)), BoxGet'(VarBound (v2,mj2,mn2)) -> String.equal v1 v2 && mj1 = mj2  && mn1 = mn2
+-  | BoxSet'(VarFree v1,e1), BoxSet'(VarFree v2, e2) -> String.equal v1 v2 && (expr'_eq e1 e2)
+-  | BoxSet'(VarParam (v1,mn1), e1), BoxSet'(VarParam (v2,mn2),e2) -> String.equal v1 v2 && mn1 = mn2 && (expr'_eq e1 e2)
+-  | BoxSet'(VarBound (v1,mj1,mn1),e1), BoxSet'(VarBound (v2,mj2,mn2),e2) -> String.equal v1 v2 && mj1 = mj2  && mn1 = mn2 && (expr'_eq e1 e2)
+   | If'(t1, th1, el1), If'(t2, th2, el2) -> (expr'_eq t1 t2) &&
+                                             (expr'_eq th1 th2) &&
+                                               (expr'_eq el1 el2)
+@@ -56,30 +47,265 @@ let rec expr'_eq e1 e2 =
+   | ApplicTP'(e1, args1), ApplicTP'(e2, args2) ->
+ 	 (expr'_eq e1 e2) &&
+ 	   (List.for_all2 expr'_eq args1 args2)
+-  | _ -> false;;	
+-                      
++  | _ -> false;;
++
++type zug= 
++  Zug of int*var;;
++
++type ans=
++  |Varlist of var list
++  |Nil;;
++
++                       
+ exception X_syntax_error;;
++exception X_No_match_for_exp;;
++exception X_Hello;;
++exception X_Goodbye;;
++exception X_tail_form_exception;;
+ 
+ module type SEMANTICS = sig
+   val run_semantics : expr -> expr'
+   val annotate_lexical_addresses : expr -> expr'
+   val annotate_tail_calls : expr' -> expr'
+   val box_set : expr' -> expr'
++
++
++  
++  (*To delete*)
++  val giveMeTheFirst: expr list-> expr'
+ end;;
+ 
+ module Semantics : SEMANTICS = struct
+ 
+-let annotate_lexical_addresses e = raise X_not_yet_implemented;;
+ 
+-let annotate_tail_calls e = raise X_not_yet_implemented;;
++(*Usefull*)
++
++let rec append l1 l2 =
++  match l1 with
++  | h::t -> h :: append t l2
++  | [] -> l2;;
++
++
++(*Main logic*)
++
++let rec checkMyExpTagType e num pairs_paramLst=
++match e with
++| Const (e)-> Const' (e)
++| Var(v)-> Var'((checkVarsEnviroment v num pairs_paramLst))
++| If(test,dit,dif)-> If' ((checkMyExpTagType test num pairs_paramLst), (checkMyExpTagType dit num pairs_paramLst), (checkMyExpTagType dif num pairs_paramLst))
++| Seq(lst)-> Seq'(List.map (fun (x)-> checkMyExpTagType x num pairs_paramLst) lst)
++| Or(lst)->  Or'(List.map (fun (x)-> checkMyExpTagType x num pairs_paramLst) lst)
++| Def (Var(v),exp)-> Def' (VarFree(v),(checkMyExpTagType exp num pairs_paramLst))
++| LambdaSimple (args,body)-> (handleLambda args body (num + 1) pairs_paramLst)
++| LambdaOpt (args,opt,body)-> (handleLambdaOpt args opt body (num+1) pairs_paramLst)
++| (*Ido ama*) Set(Var(v),exp)-> Set' ((checkVarsEnviroment v num pairs_paramLst), (checkMyExpTagType exp num pairs_paramLst))
++| Applic (operator, operands)-> Applic' ((checkMyExpTagType operator num pairs_paramLst), (List.map (fun (x)-> (checkMyExpTagType x num pairs_paramLst)) operands))
++| _-> raise X_No_match_for_exp
++
++
++and parameterize param_lst rst_lst curr_index=
++match rst_lst with
++|[]-> param_lst
++|x::rst->(parameterize (append param_lst [VarParam(x, curr_index)]) rst (curr_index + 1))
++
++and handleLambda argsLst body level pairs_paramLst=
++let current_params= (parameterize [] argsLst 0) in
++let newPairs= (List.map (fun (x)-> Zug(level,x)) current_params) in
++let pairsOfParms= (append newPairs pairs_paramLst) in (*ext_env*) 
++let parsed_body=(checkMyExpTagType body level pairsOfParms) in
++LambdaSimple' (argsLst, parsed_body)
++
++and handleLambdaOpt argsLst opt body level pairs_paramLst=
++let current_params= (parameterize [] (append argsLst [opt]) 0) in
++let newPairs= (List.map (fun (x)-> Zug(level,x)) current_params) in
++let pairsOfParms= (append newPairs pairs_paramLst) in (*ext_env*) 
++let parsed_body=(checkMyExpTagType body level pairsOfParms) in
++LambdaOpt' (argsLst,opt, parsed_body)
++
++
++
++and checkVarsEnviroment v level paramLst=
++match paramLst with
++|[]-> VarFree(v)
++|Zug(num,VarParam(str,index))::rst->  if ( v=str )
++                                      then (
++                                        if (num=level)
++                                        then VarParam(v,index)
++                                        else VarBound(v,(level-num-1),index))
++                                      else (checkVarsEnviroment v level rst)
++
++;;
++
++
++(*Tail Form*)
++
++
++
++let rec tailForms e tp=
++match e with
++|Const'(c)-> Const'(c)
++|Var'(x)-> Var'(x)
++|Applic'(operator, operands)-> (handleApplic operator operands tp)
++|Or' (lst)-> (handleOr lst tp)
++|If' (test, dit, dif)-> (If' ((tailForms test false),(tailForms dit tp),(tailForms dif tp)))
++|Def'(x, expr)-> Def'(x, (tailForms expr false))
++|Seq'(lst)-> Seq' (handle_sequence [] lst)
++|Set'(var,exp)-> Set'(var,(tailForms exp false))
++|LambdaSimple' (args,bdy)-> LambdaSimple' (args, (tailForms bdy true)) 
++|LambdaOpt' (args,opt,bdy)-> LambdaOpt' (args,opt,(tailForms bdy true))
++|_-> raise X_tail_form_exception
++
++
++
++
++and handleApplic operator operands tp=
++let annotateOperator= (tailForms operator false) in
++let annotateOperands= (List.map (fun (x)-> (tailForms x false)) operands ) in
++if tp then (ApplicTP' (annotateOperator, annotateOperands)) else (Applic' (annotateOperator, annotateOperands))
++
++and handleOr lst tp=
++let firstAnnotated= (tailForms (List.hd lst) false) in
++let rstAnnotated= (List.map (fun (x)-> (tailForms x tp)) (List.tl lst)) in
++Or' ((append [firstAnnotated] rstAnnotated))
++
++
++and handle_sequence expLst rst=
++match rst with
++|x::[]-> (append expLst [tailForms x true])
++|x::y-> (handle_sequence (append expLst [(tailForms x false)]) y)
++
++;;
++
++
++
++let rec combineAnswers lst=
++match lst with
++|[]-> []
++|x::y-> (List.flatten lst);;
++
++let rec checkIfThereIsRead varName expr=
++match expr with
++| Const'(x)-> []
++| Var'(m)-> (match m with
++            |VarParam(varName, x)-> [VarParam(varName,x)]
++            |VarBound(varName,x,y)-> [VarBound(varName,x,y)]
++            |els-> [])
++
++| If'(test,dit,dif)-> combineAnswers [(checkIfThereIsRead varName test);(checkIfThereIsRead varName dit);(checkIfThereIsRead varName dif)]
++| Seq'(lst)->(combineAnswers (List.map (fun (x)->(checkIfThereIsRead varName x)) lst))
++| Set' (something,expr)->(checkIfThereIsRead varName expr)
++| Def' (x,expr)-> (checkIfThereIsRead varName expr)
++| Or' (lst)-> (combineAnswers (List.map (fun (x)->(checkIfThereIsRead varName x)) lst))
++| LambdaSimple'(stringLst, expr)-> if (List.mem varName stringLst) then [] else (checkIfThereIsRead varName expr)
++| LambdaOpt' (stringLst,str, expr)-> if (List.mem varName (append stringLst [str])) then [] else (checkIfThereIsRead varName expr)
++| Applic' (expr,exprlst)-> (combineAnswers (List.map  (fun (x)->(checkIfThereIsRead varName x)) (append [expr] exprlst)))
++| ApplicTP' (expr,exprlst)-> (combineAnswers (List.map  (fun (x)->(checkIfThereIsRead varName x)) (append [expr] exprlst)))
++| els-> [];;
++
++
++
++let rec checkIfThereIsWrite varName expr=
++match expr with
++| Const'(x)-> []
++| Var'(m)-> []
++| If'(test,dit,dif)-> combineAnswers [(checkIfThereIsWrite varName test);(checkIfThereIsWrite varName dit);(checkIfThereIsWrite varName dif)]
++| Seq'(lst)->(combineAnswers (List.map (fun (x)->(checkIfThereIsWrite varName x)) lst))
++| Set' (VarParam(varName,x),expr)->(append [VarParam(varName,x)] (checkIfThereIsWrite varName expr))
++| Set' (VarBound(varName,x,y),expr)-> (append [VarBound(varName,x,y)] (checkIfThereIsWrite varName expr))
++| Set' (something,expr)-> (checkIfThereIsWrite varName expr)
++| Or' (lst)-> (combineAnswers (List.map (fun (x)->(checkIfThereIsWrite varName x)) lst))
++| LambdaSimple'(stringLst, expr)-> if (List.mem varName stringLst) then [] else (checkIfThereIsWrite varName expr)
++| LambdaOpt' (stringLst,str, expr)-> if (List.mem varName (append stringLst [str])) then [] else (checkIfThereIsWrite varName expr)
++| Applic' (expr,exprlst)-> (combineAnswers (List.map  (fun (x)->(checkIfThereIsWrite varName x)) (append [expr] exprlst)))
++| ApplicTP' (expr,exprlst)-> (combineAnswers (List.map  (fun (x)->(checkIfThereIsWrite varName x)) (append [expr] exprlst)))
++| els-> [];;
++
++let rec checkIfThereIsBound varsLst=
++match varsLst with
++| []-> false
++| (VarBound(x,a,b)::rst)->true
++| (something::rst)->checkIfThereIsBound rst;;
++
++
++let rec boxMyBdy oneArg bdy=
++match bdy with
++  | Const'(x)->Const'(x)
++  | Var'(VarParam(oneArg,loEhapt))-> BoxGet' (VarParam(oneArg,loEhapt))
++  | Var'(VarBound(oneArg,loEhapt1, loEhapt2))-> BoxGet' (VarBound(oneArg,loEhapt1, loEhapt2))
++  | Var'(something)-> Var'(something)
++  | If'(tst,dit,dif)-> If'((boxMyBdy oneArg tst),(boxMyBdy oneArg dit), (boxMyBdy oneArg dif))
++  | Seq'(expLst)-> Seq'(List.map (fun (x)-> boxMyBdy oneArg x) expLst)
++  | Set' (VarParam(oneArg,loEhapt),exp)-> BoxSet' (VarParam(oneArg,loEhapt),(boxMyBdy oneArg exp))
++  | Set' (VarBound(oneArg,loEhapt1,loEhapt2),exp)-> BoxSet' (VarBound(oneArg,loEhapt1,loEhapt2),(boxMyBdy oneArg exp))
++  | Set'(var,exp)-> Set'(var, boxMyBdy oneArg exp)
++  | Def'  (var,exp)-> Def'(var,(boxMyBdy oneArg exp))
++  | Or'(expLst)-> Or' (List.map (fun (x)-> boxMyBdy oneArg x) expLst)
++  | LambdaSimple' (args,bdy)-> (if (List.mem oneArg args ) then LambdaSimple' (args,bdy) else LambdaSimple' (args, (boxMyBdy oneArg bdy)))  
++  | LambdaOpt'(args,str,bdy)-> (if (List.mem oneArg (append args [str])) then LambdaOpt' (args,str, (boxMyBdy oneArg bdy)) else LambdaOpt' (args,str, (boxMyBdy oneArg bdy)))    
++  | Applic' (operator,operands)-> Applic'(boxMyBdy oneArg operator, (List.map (fun (x)-> boxMyBdy oneArg x) operands))
++  | ApplicTP' (operator,operands)-> ApplicTP'(boxMyBdy oneArg operator, (List.map (fun (x)-> boxMyBdy oneArg x) operands))
++
++
++let getTheBoxSentence varName minor=
++Set' (VarParam(varName,minor),Box'(VarParam(varName,minor)));;
++
++let checkOneRib oneArg minor bdy=
++  let readsLst= checkIfThereIsRead oneArg bdy in
++  let writeLst= checkIfThereIsWrite oneArg bdy in
++  let boundsInRead= checkIfThereIsBound readsLst in
++  let boundInWrite= checkIfThereIsBound writeLst in
++  if  (
++      ((List.length readsLst)>0)
++   &  ((List.length writeLst)>0) 
++   &  (boundInWrite || boundsInRead) 
++      )
++      then Seq'[(getTheBoxSentence oneArg minor);(boxMyBdy oneArg bdy)]
++      else bdy;;
++
++
++let rec checkAndBox args minor bdy=
++match args with
++|[]-> bdy
++|x::y-> checkAndBox y (minor + 1) (checkOneRib x minor bdy);;
++
++
++let rec handleMyBox e=
++  match e with
++  | Const'(x)->Const'(x)
++  | Var'(x)->Var'(x)
++  | If'(tst,dit,dif)-> If'((handleMyBox tst),(handleMyBox dit), (handleMyBox dif))
++  | Seq'(expLst)-> Seq'(List.map handleMyBox expLst)
++  | Set' (var,exp)-> Set' (var,(handleMyBox exp))
++  | Def'  (var,exp)-> Def'(var,(handleMyBox exp))
++  | Or'(expLst)-> Or' (List.map handleMyBox expLst)
++  | LambdaSimple' (args,bdy)->LambdaSimple' (args, (checkAndBox args 0 bdy))
++  | LambdaOpt'(args,str,bdy)-> LambdaOpt' (args, str,(checkAndBox (append args [str]) 0 bdy))
++  | Applic' (operator,operands)-> Applic'(handleMyBox operator, List.map handleMyBox operands)
++  | ApplicTP' (operator,operands)-> ApplicTP'(handleMyBox operator, List.map handleMyBox operands);;
++
++
++let annotate_lexical_addresses e = 
++  (checkMyExpTagType e (-1) []);;
++
++
++
++let annotate_tail_calls e = 
++  (tailForms e false)
++
++let box_set e = 
++handleMyBox e;;
++
+ 
+-let box_set e = raise X_not_yet_implemented;;
+ 
+ let run_semantics expr =
+   box_set
+     (annotate_tail_calls
+        (annotate_lexical_addresses expr));;
+-  
++
++let giveMeTheFirst lst=
++  (run_semantics (List.hd lst));;
++    
+ end;; (* struct Semantics *)
+ 
+ 
++

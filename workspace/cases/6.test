@@ -1,0 +1,24 @@
+#use "semantic-analyser.ml";;
+   
+let input = Semantics.run_semantics  (LambdaOpt (["x"; "y"; "z"], "w",
+  Seq
+   [Var "z";
+    Applic
+     (LambdaSimple ([],
+       Seq [Set (Var "w", Var "w"); Applic (Applic (Var "y", [Var "x"]), [])]),
+     [])]));;
+
+let output = LambdaOpt' (["x"; "y"; "z"], "w",
+ Seq'
+  [Var' (VarParam ("z", 2));
+   ApplicTP'
+    (LambdaSimple' ([],
+      Seq'
+       [Set' (Var' (VarBound ("w", 0, 3)), Var' (VarBound ("w", 0, 3)));
+        ApplicTP'
+         (Applic' (Var' (VarBound ("y", 0, 1)),
+           [Var' (VarBound ("x", 0, 0))]),
+         [])]),
+    [])]);;                       
+Printf.printf "%b" (List.for_all2 expr'_eq  [input] [output]);;
+

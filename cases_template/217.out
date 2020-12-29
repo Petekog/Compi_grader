@@ -1,0 +1,1 @@
+LambdaSimple' (["x"], Seq' ([Set' (Var' (VarParam ("x", 0)), VarParam ("x", 0));Seq' ([VarParam ("x", 0);LambdaSimple' (["x"], Seq' ([Set' (Var' (VarParam ("x", 0)), VarParam ("x", 0));Seq' ([Set' (VarParam ("x", 0), Const' (Sexpr (Number (Fraction (1, 1)))));LambdaSimple' ([], VarBound ("x", 0, 0))])]));LambdaSimple' ([], Set' (VarBound ("x", 0, 0), VarBound ("x", 0, 0)))])]))

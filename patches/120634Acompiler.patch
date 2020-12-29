@@ -1,0 +1,1036 @@
+diff --git a/reader.ml b/reader.ml
+index 32445c2..99c8bd8 100644
+--- a/reader.ml
++++ b/reader.ml
+@@ -1,5 +1,6 @@
+ 
+ #use "pc.ml";;
++open PC;;
+ 
+ exception X_not_yet_implemented;;
+ exception X_this_should_not_happen;;
+@@ -41,6 +42,416 @@ let normalize_scheme_symbol str =
+   else Printf.sprintf "|%s|" str;;
+ 
+ 
+-let read_sexprs string = raise X_not_yet_implemented;;
++let rec everything trik = 
++  let x = nt_epsilon in
++  pack(x)(fun(a)->a) trik
++  and nt_psik s = const (fun ch -> ch == ',') s
++  and nt_e s = const (fun ch -> lowercase_ascii ch == 'e') s
++  and nt_hiluk s = const (fun ch -> ch == '/') s
++  and nt_plus s = const (fun ch -> ch == '+') s
++  and nt_minus s = const (fun ch -> ch == '-') s
++  and nt_point s = const (fun ch -> ch == '.') s
++  and sign s = (disj nt_minus nt_plus) s 
++  and nt_hash s = const (fun ch -> ch == '#') s
++  and nt_boolf s = const (fun ch -> lowercase_ascii ch == 'f') s
++  and nt_boolt s  = const (fun ch -> lowercase_ascii ch == 't') s
++  and digit s = (range '0' '9') s
++  and nonZeroDigit s = (range '1' '9') s
++  and nt_n s= const (fun ch ->  lowercase_ascii ch == 'n') s
++  and nt_u s= const (fun ch ->  lowercase_ascii ch == 'u') s
++  and nt_l s= const (fun ch ->  lowercase_ascii ch == 'l') s
++  and nt_i s= const (fun ch ->  lowercase_ascii ch == 'i') s
++  and nt_r s= const (fun ch ->  lowercase_ascii ch == 'r') s
++  and nt_t s= const (fun ch ->  lowercase_ascii ch == 't') s
++  and nt_a s= const (fun ch ->  lowercase_ascii ch == 'a') s
++  and nt_b s= const (fun ch ->  lowercase_ascii ch == 'b') s
++  and nt_charRange s= const (fun ch ->  ch >= '!') s
++  and nt_p s= const (fun ch ->  lowercase_ascii ch == 'p') s
++  and nt_g s= const (fun ch ->  lowercase_ascii ch == 'g') s
++  and nt_s s= const (fun ch ->  lowercase_ascii ch == 's') s
++  and nt_c s= const (fun ch ->  lowercase_ascii ch == 'c') s
++  and nt_w s= const (fun ch ->  lowercase_ascii ch == 'w') s
++  and nt_dotPsik s= const (fun ch ->  ch == ';') s
++  and nt_sleshN s= const (fun ch ->  ch == '\n') s
++  and nt_noSleshN s= const (fun ch ->  ch != '\n') s
++  and zero s= const (fun ch -> ch == '0') s
++  and backslash s= const (fun ch -> ch == '\\') s
++  and gereshaim s= const (fun ch -> ch == '\"') s
++  and geresh s= const (fun ch -> ch == '\'') s
++  and quasiquote s= const (fun ch -> ch == '`') s
++  and unquote s= const (fun ch -> ch == ',') s
++  and shtrudel s= const (fun ch -> ch == '@') s
++  and unquoteSplicing s = (caten unquote shtrudel) s 
++  and nt_leftSoger s= const (fun ch ->  ch == '(') s
++  and nt_rightSoger s= const (fun ch ->  ch == ')') s
++  and nt_specialSym s= const (fun ch ->  ch == '!' || ch == '$'||ch == '^' || ch == '*'||ch == '-' || ch == '_'||ch == '=' || ch == '+'||
++  ch == '<'||ch == '>' || ch == '/'|| ch == '?' || ch == '.' || ch == ':') s
++
++  and nogershaim s = const (fun ch -> ch != '\"') s
++
++  and simpleComment s =  
++    let x =   (caten (caten nt_dotPsik (star nt_noSleshN)) nt_sleshN)  in
++    pack(x)(fun(y) -> "") s
++
++  and nt_whitespacesZmani s =  
++    let x =   ( nt_whitespace) in
++      pack(x)(fun(y) -> "") s
++
++  and specialComments s = 
++    let x =  (caten (caten nt_hash nt_dotPsik) specialCommentAtoms) in
++    pack(x)(fun(y) -> "") s
++
++
++  and nt_whitespaces s =   (star (disj (disj specialComments simpleComment) nt_whitespacesZmani))  s
++
++
++  and listSize list = List.fold_left 
++      (fun size lis ->
++         size + 1) 0 list
++
++  and beforePoint num = 
++    let size = listSize (string_to_list num) in
++      (float_of_string num) *. 10.0 ** (-1.0 *. float_of_int size)
++
++  and tok_num_yesZero s= 
++    let spaces =   caten nt_whitespaces (plus zero) in
++    pack (spaces) (fun (l,z) ->  (Number(Fraction (0,1)))) s
++
++  and tok_num_noZero s=
++    let digits = (plus digit) in 
++    let spaces =  caten nt_whitespaces (star zero) in
++    let final = caten spaces digits  in
++    pack (final) (fun ((l,z),ds) ->  (Number(Fraction (int_of_string(list_to_string ds),1)))) s
++
++  and tok_num_ s = (disj tok_num_noZero tok_num_yesZero)s
++
++  and tok_signed_num_ s=
++    let digits = (plus digit) in 
++    let spaces =  (caten nt_whitespaces sign) in
++    let final = caten spaces digits  in
++    pack (final) (fun ((l,numSign),ds) ->  if numSign == '+' then Number(Fraction(
++      int_of_string(list_to_string ds) , 1)) else Number(Fraction(
++      int_of_string(list_to_string ds) * -1 , 1))) s
++
++  and tok_signed_num_negative_zero s=
++    let digits = (plus digit) in 
++    let spaces =  (caten nt_whitespaces sign) in
++    let final = caten spaces digits  in
++    pack (final) (fun ((l,numSign),ds) ->  if numSign == '+' then Number(Fraction(
++      int_of_string(list_to_string ds) , 1)) else Number(Fraction(
++      int_of_string(list_to_string ds) , -1))) s
++  
++
++  and digits s = (plus digit) s
++
++  and matchE x = 
++    match x with
++    | Number(Float f) -> f
++    | Number(Fraction(up,down)) ->  (float_of_int up) *. (float_of_int down)
++    | sexpr -> raise X_no_match
++
++  and matchFloat x =
++    match x with
++    | Number(Float f) -> if (f < 0.0) then true else false
++    | Number(Fraction(up,down)) ->  if(down = -1) then true else false 
++    | sexpr -> raise X_no_match
++
++
++  and floatNum s = 
++    let num1 = (disj tok_signed_num_negative_zero tok_num_) in
++    let num2 = digits in
++    let point = nt_point in 
++    let garbage = caten nt_whitespaces num1 in
++    let together = caten garbage point in
++    let final = caten together num2 in
++    pack(final) (fun(((gar,n1),d),n2) -> if (matchFloat n1) then Number(Float((matchE n1) -. (beforePoint 
++      (list_to_string n2)))) else 
++      Number(Float((matchE n1) +. (beforePoint 
++  (list_to_string n2)
++    )))) s  
++      
++  and findGcd n1 n2 =
++    if n2 = 0 then n1 
++    else findGcd n2 (n1 mod n2) 
++    
++
++  and hiluk s = 
++    let num1 = disj tok_num_  tok_signed_num_ in
++    let garbage = caten nt_whitespaces num1 in
++    let num2 = tok_num_ in
++    let slesh = nt_hiluk in 
++    let together = caten garbage slesh in
++    let final = caten together num2 in
++    let finalGarbage = caten final nt_whitespaces in 
++    pack(finalGarbage) (fun((((gar,n1),d),n2),gar2) -> Number(Fraction(
++      (int_of_float (matchE n1)) / (findGcd (int_of_float (matchE n1)) (int_of_float (matchE n2))),(int_of_float (matchE n2)) 
++      / (findGcd (int_of_float (matchE n1)) (int_of_float (matchE n2)))
++      ))) s 
++    
++    
++  and eNum s = 
++      let num1 = disj (disj floatNum tok_signed_num_)  tok_num_  in
++      let garbage = caten nt_whitespaces num1 in
++      let num2 = disj (disj floatNum tok_signed_num_)  tok_num_  in
++      let e = nt_e in 
++      let together = caten garbage e in
++      let final = caten together num2 in
++      pack(final) (fun(((gar,n1),_),n2) -> Number(Float((matchE n1)*.(10.0**(matchE n2))))) s
++
++
++  and mapa f s =
++    match s with
++    | [] -> []
++    | a::rest -> (f a) :: (mapa f rest)
++
++  and stringLowercase s = 
++    let l = string_to_list(s) in
++    list_to_string(mapa lowercase_ascii l)
++
++  and symbols s =   
++      let range1 = range 'a' 'z' in
++      let range2 = range 'A' 'Z' in
++      let range3 = range '0' '9' in
++      let range4 = nt_specialSym in
++      let final =  (plus(disj (disj (disj range1 range2) range3) range4)) in
++      pack(final) (fun(x) -> Symbol (if (list_to_string x) = "." then raise X_no_match else stringLowercase (list_to_string x))) s
++        
++  and symbolsSpace s = 
++    let x = caten(caten nt_whitespaces symbols) nt_whitespaces in
++    pack(x)(fun((s,r),gar)->r) s
++      
++
++  and general_num_ s= 
++    let garbage = (caten(caten nt_whitespaces (disj (not_followed_by (disj (disj (disj (disj eNum floatNum) tok_num_) hiluk) tok_signed_num_) symbols) hiluk))
++    nt_whitespaces) in
++    pack(garbage)(fun((x,y),gar)->y) s
++
++    
++  and matchAtom x = 
++    match x with
++    | Nil -> Nil
++    | Number(Fraction(up,down)) -> Number(Fraction(up,down)) 
++    | Symbol s -> Symbol s
++    | Number(Float f) -> Number(Float f)
++    | String s -> String s
++    | Bool b -> Bool b
++    | Pair (a,b) -> Pair(a,b)  
++    | Char c -> Char c  
++
++
++  and nul s =     
++    let hash =  (caten nt_whitespaces nt_hash) in
++    let start = caten hash backslash in
++    let n = caten start nt_n in
++    let u = caten n nt_u in
++    let l = caten u nt_l in
++    pack(l) (fun (a) ->  Char '\000') s
++
++
++  and newline s=     
++    let hash =  (caten nt_whitespaces nt_hash) in
++    let start = caten hash backslash in
++    let n = caten start nt_n in
++    let e = caten n nt_e in
++    let w = caten e nt_w in
++    let l = caten w nt_l in
++    let i = caten l nt_i in
++    let n2 = caten i nt_n in
++    let e2 = caten n2 nt_e in
++    pack(e2) (fun (a) ->  Char '\n') s
++    
++  and return s =     
++    let hash =  (caten nt_whitespaces nt_hash) in
++    let start = caten hash backslash in
++    let r = caten start nt_r in
++    let e = caten r nt_e in
++    let t = caten e nt_t in
++    let u = caten t nt_u in
++    let r2 = caten u nt_r in
++    let n = caten r2 nt_n in
++    pack(n) (fun (a) ->  Char '\r') s
++    
++  and tab s =     
++    let hash =  (caten nt_whitespaces nt_hash) in
++    let start = caten hash backslash in
++    let t = caten start nt_t in
++    let a = caten t nt_a in
++    let b = caten a nt_b in
++    pack(b) (fun (a) ->  Char '\t') s
++
++  and page s =     
++    let hash =  (caten nt_whitespaces nt_hash) in
++    let start = caten hash backslash in
++    let p = caten start nt_p in
++    let a = caten p nt_a in
++    let g = caten a nt_g in
++    let e = caten g nt_e in
++    pack(e) (fun (a) ->  Char '\012') s
++  
++  and space tr =     
++    let hash =  (caten nt_whitespaces nt_hash) in
++    let start = caten hash backslash in
++    let s = caten start nt_s in
++    let p = caten s nt_p in
++    let a = caten p nt_a in
++    let c = caten a nt_c in
++    let e = caten c nt_e in
++    pack(e) (fun (a) ->  Char ' ') tr
++    
++  and simple_char s =
++    let hash =  (caten nt_whitespaces nt_hash) in
++    let start = caten hash backslash in
++    let final = caten start nt_charRange in
++    pack(final) (fun (((x,y),a),ch) -> Char ch) s
++
++  and chars s = (disj(disj (disj (disj (disj (disj nul newline) return) tab) page) space) simple_char) s
++
++  and noSpaces s = const (fun ch -> ch > ' ') s
++
++
++  and stringMaker s b =
++    match s with
++    | [] -> if b = 1 then ['\\'] else []
++    | a::rest -> if b = 1 then match a with
++    | 'r' -> '\r'::(stringMaker rest 0)
++    | 'n' -> '\n'::(stringMaker rest 0)
++    | 't' -> '\t'::(stringMaker rest 0)
++    | 'f' -> '\012'::(stringMaker rest 0)
++    | '\"' -> '"'::(stringMaker rest 0)
++    | '\\' -> '\\'::stringMaker rest 0
++    | ch -> '\\'::ch::(stringMaker rest 0)
++    
++    else (if a != '\\' then a::(stringMaker rest 0) else stringMaker rest 1)
+   
++
++  and strings s =
++    let spaces = (caten nt_whitespaces gereshaim) in
++    let final  = caten (caten (caten spaces (star nogershaim)) gereshaim) nt_whitespaces in
++    pack(final) (fun(((l, s), r),gar) -> String (list_to_string (stringMaker s 0))) s
++
++
++  and boolval s=
++    let hash =   caten (caten nt_whitespaces (caten  nt_hash nt_boolf)) nt_whitespaces in 
++    let hash2 =  caten (caten nt_whitespaces (caten nt_hash nt_boolt)) nt_whitespaces in 
++
++    pack (disj hash hash2) (fun ((gar, (p,r)),g2) -> if lowercase_ascii r == 't'   then Bool true else Bool false) s
++
++
++  and matchQuote x = 
++    if x = '\'' then Symbol "quote" 
++    else if x = '`' then Symbol "quasiquote" else
++    Symbol "unquote"
++
++
++  and addNil x = 
++    match x with
++      | Pair(l,Bool r) -> Pair(l,Pair(Bool r,Nil))
++      | Pair(l,Nil) -> Pair(l,Nil)
++      | Nil -> Nil
++      | Pair(l,Number r) -> Pair(l,Pair(Number r,Nil))
++      | Pair(l,Char r) -> Pair(l,Pair(Char r,Nil))
++      | Pair(l,String r) -> Pair(l,Pair(String r,Nil))
++      | Pair(l,Symbol r) -> Pair(l,Pair(Symbol r,Nil))
++      | Pair(l,Pair(l1,r1)) -> Pair(l,(addNil (Pair(l1,r1))))
++      | sexpr -> raise X_no_match 
++
++
++    
++  and nt_notpoint s = const (fun ch -> ch != '.') s
++    
++  and numSymStr s=  (disj (disj (disj (disj general_num_ symbolsSpace) strings) chars) boolval) s
++  and things s =  (disj (disj (disj (disj (disj general_num_ symbolsSpace) strings) chars) boolval)) s 
++
++  and matchAtomQuotes x = 
++    match x with
++    | Nil -> Nil
++    | Number(Fraction(up,down)) -> Pair(Number(Fraction(up,down)),Nil)
++    | Symbol s -> Pair(Symbol s,Nil)
++    | Number(Float f) -> Pair(Number(Float f),Nil)
++    | String s -> Pair(String s,Nil)
++    | Bool b -> Pair(Bool b,Nil)
++    | Pair (a,b) -> Pair(matchAtom(a),matchAtom(b))
++    | Char c -> Pair(Char c,Nil)  
++
++
++
++
++  and allQuotesTogether n =
++    let numSymStrTmpQuote = caten geresh     (disj (disj (disj (disj (disj (disj general_num_ symbolsSpace) strings) chars) boolval) (disj allQuotesTogether splising)) allPairs) in 
++    let numSymStrTmpQuasi = caten quasiquote (disj (disj (disj (disj (disj (disj general_num_ symbolsSpace) strings) chars) boolval) (disj allQuotesTogether splising)) allPairs) in 
++    let numSymStrTmpUnquote = caten unquote  (disj (disj (disj (disj (disj (disj general_num_ symbolsSpace) strings) chars) boolval) (disj allQuotesTogether splising)) allPairs) in 
++    let final = disj(disj numSymStrTmpUnquote numSymStrTmpQuasi) numSymStrTmpQuote in
++    pack(final)(fun(g,x) -> Pair ((matchQuote g) , Pair(matchAtom(x),Nil))) n
++
++    and splising y =
++      let numSymSplis = caten unquoteSplicing (disj (disj (disj (disj (disj (disj general_num_ symbolsSpace) strings) chars) boolval) (disj allQuotesTogether splising)) allPairs) in 
++      let final2 = numSymSplis in
++      pack(final2)(fun(g,x) -> Pair (Symbol "unquote-splicing" , Pair(matchAtom(x),Nil))) y
++        
++    and allPairs z =
++      let rec subPairs s = 
++        let rec nestedPairs n = 
++          let first = disj (disj numSymStr (disj allQuotesTogether splising)) allPairs in
++          let second = caten ( caten (caten first nt_whitespaces) nt_point) nt_whitespaces in
++          let nested = disj (disj numSymStr (disj allQuotesTogether splising)) allPairs in
++          let third = caten (caten second nested) nt_whitespaces in
++          let final =  third  in
++          pack(final)(fun (((((((val1),space),dot),space2),val2),s)) ->  Pair(matchAtom(val1),matchAtom(val2))) n in 
++        let rec nestedPairsSpaceDot n = 
++          let start = caten nt_whitespaces  (disj numSymStr (disj allPairs (disj allQuotesTogether splising))) in 
++          let nested = caten (caten start (star nt_whitespace)) nt_point in
++          let second = disj numSymStr (disj allPairs (disj allQuotesTogether splising))  in
++          let total =  caten nested second in
++          pack(total)(fun ((((s,r1),l),s2),(r)) -> Pair(matchAtom(r1),matchAtom(r))) n in
++        let rec nestedPairsSpace n =  
++          let start = caten nt_whitespaces (disj numSymStr (disj allPairs (disj allQuotesTogether splising))) in
++          let nested = caten start (star nt_whitespace) in
++          let second =  numSymStr  in
++          let total =  caten (caten nested second) nt_whitespaces in
++          pack(total)(fun (((((s,l),s2),r),s3)) -> (addNil (Pair(matchAtom(l),matchAtom(r))))) n in
++        let rec innerSpacePairs n =
++          let start = caten nt_whitespaces (disj numSymStr (disj allPairs (disj allQuotesTogether splising))) in
++          let nested = caten start (star nt_whitespace) in
++          let second = subPairs in
++          let total =  caten (caten nested second) nt_whitespaces in
++          pack(total)(fun (((((s,l),s2),r),s3)) -> (Pair(matchAtom(l),matchAtom(r)))) n in
++        let rec nestedPairsEnd n =
++          let start = caten (caten nt_whitespaces (disj numSymStr (disj allPairs (disj allQuotesTogether splising)))) nt_whitespaces in
++          pack(start)(fun ((l, p), r) -> Pair(matchAtom(p),Nil)) n in     
++
++        let chose =   (disj (disj (disj  (disj innerSpacePairs nestedPairsSpaceDot) nestedPairsSpace) nestedPairs) nestedPairsEnd)  in
++        pack(chose)(fun (x) -> x) s in
++      let final =  (caten (caten nt_leftSoger (disj subPairs emptyPair)) nt_rightSoger)   in
++      pack(final)(fun((a,b),c) -> b) z
++
++
++  and allQuotesTogetherSapce tr = 
++    let x = caten (caten nt_whitespaces allQuotesTogether) nt_whitespaces in
++    pack(x)(fun((s,r),gar)->r) tr
++
++  and allPairsSpace tr = 
++    let x =  caten (caten nt_whitespaces allPairs) nt_whitespaces in
++    pack(x)(fun((s,r),gar)->r) tr
++
++  and atoms n = 
++    let garbage = (caten (caten nt_whitespaces (star(disj (disj chars (disj (disj (disj (disj (disj allQuotesTogetherSapce splising) boolval) general_num_) strings) symbolsSpace)) allPairsSpace)
++    )) nt_whitespaces) in
++    pack(garbage)(fun((gar,r),gar2) -> r) n
++      
++  and specialCommentAtoms tri = 
++          let garbage = (caten nt_whitespaces (disj (disj (disj (disj (disj (disj general_num_ symbolsSpace) strings) chars) boolval) (disj allQuotesTogether splising)) allPairs)) in
++          let finalGarbage = (caten garbage nt_whitespaces) in
++          pack(finalGarbage)(fun((gar1,c),gar2) -> c) tri
++  
++  and emptyPair s =
++    let garbage = nt_whitespaces in
++          pack(garbage)(fun(r) -> Nil) s 
++
++  let read_sexprs string = 
++  let input_list = string_to_list string in
++    let (final,x) = (atoms input_list)  in
++       final;;
++ 
++
++
+ end;; (* struct Reader *)
+diff --git a/readme.txt b/readme.txt
+index e69de29..a240197 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1,3 @@
++Gabi Roytenburd 212977631
++Omri Mishali 212570758
++I (We) assert that the work we submitted is 100% our own. We have not received anypart from any other student in the class, nor have we give parts of it for use to others.Nor have we used code from other sources: Courses taught previously at this university,courses taught at other universities, various bits of code found on the internet, etc.We realize that should our code be found to contain code from other sources, that aformal case shall be opened against us withva’adat mishma’at, in pursuit of disciplinaryaction.
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..72a24a9 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -69,16 +69,313 @@ end;;
+ 
+ module Semantics : SEMANTICS = struct
+ 
+-let annotate_lexical_addresses e = raise X_not_yet_implemented;;
++let rec foldVars vars =
++    match vars with
++    | [] -> []
++    | x::el -> [[x;"0"]] @ (foldVars el)
+ 
+-let annotate_tail_calls e = raise X_not_yet_implemented;;
++  and increaseIndex vars =
++    match vars with
++    | [] -> []
++    | [x;index] :: el -> [[x;string_of_int(int_of_string(index) + 1)]] @ (increaseIndex el)
++    | x -> [["wrong";"wrong"]]
+ 
+-let box_set e = raise X_not_yet_implemented;;
++
++  and increaseIndexTmp vars =
++    match vars with
++    | [] -> []
++    | car::cdr -> [increaseIndex car] @ (increaseIndexTmp cdr)
++    
++
++  and findLexIndex hashLex v =
++    match hashLex with
++    | [] -> "-1"
++    | [x;index] :: el -> if (x=v) then index else (findLexIndex el v)
++    | x -> "-1" 
++
++  and findInnerLexIndex hashLex v counter =
++    match hashLex with
++    | [] -> "-1"
++    | [x;index] :: el -> if (x=v) then counter else (findInnerLexIndex el v (string_of_int(int_of_string(counter)+1)))
++    | x -> "-1" 
++    
++
++  and findLexIndexTmp vars v =
++    match vars with
++    | [] -> "-1"
++    | car::cdr -> if((findLexIndex car v) = "-1") then (findLexIndexTmp cdr v) else (findLexIndex car v)
++    
++  and findInnerLexIndexTmp vars v =
++    match vars with
++    | [] -> "-1"
++    | car::cdr -> if((findLexIndex car v) = "-1") then (findInnerLexIndexTmp cdr v) else (findInnerLexIndex car v "0")
++    
++
++
++  and annotateVar hashLex e =
++    match e with 
++    | Var(x) -> if((findLexIndexTmp hashLex x) = "-1") then (VarFree(x)) else 
++      if ((findLexIndexTmp hashLex x) = "0") then (VarParam(x,int_of_string(findInnerLexIndexTmp hashLex x))) else
++        (VarBound(x,int_of_string(findLexIndexTmp hashLex x) - 1,int_of_string(findInnerLexIndexTmp hashLex x)))
++    | x -> (VarFree("wrong"))
++
++  and annotateLexicalRec hashLex e =
++    match e with 
++    | Const(x) -> Const'(x)
++    | Var(x) -> if((findLexIndexTmp hashLex x) = "-1") then Var'(VarFree(x)) else 
++      if ((findLexIndexTmp hashLex x) = "0") then Var'(VarParam(x,int_of_string(findInnerLexIndexTmp hashLex x))) else
++        Var'(VarBound(x,int_of_string(findLexIndexTmp hashLex x) - 1,int_of_string(findInnerLexIndexTmp hashLex x)))
++    | If(x,y,z) -> If'(annotateLexicalRec hashLex x, annotateLexicalRec hashLex y, annotateLexicalRec hashLex z)
++    | Seq(x) -> Seq'(List.map (annotateLexicalRec hashLex) x)
++    | Set(x,y) -> Set'(annotateVar hashLex x , annotateLexicalRec hashLex y)
++    | Def(Var x,y) -> Def'(VarFree(x),annotateLexicalRec hashLex y)
++    | Or(x) -> Or'(List.map (annotateLexicalRec hashLex) x)
++    | LambdaSimple(vars,x) -> LambdaSimple'(vars,annotateLexicalRec ([(foldVars vars)] @ (increaseIndexTmp hashLex)) x)
++    | LambdaOpt(x,y,z) -> LambdaOpt'(x,y,annotateLexicalRec ([(foldVars x) @ (foldVars [y])] @ (increaseIndexTmp hashLex)) z)
++    | Applic(op,body) -> Applic'(annotateLexicalRec hashLex op,List.map (annotateLexicalRec hashLex) body)
++    | x -> Const'(Void)
++
++
++  and annotateTailCalls e flag =
++    match e with 
++    | Const'(x) -> Const'(x)
++    | Var'(x) -> Var'(x)
++    | Or'(xList) -> Or'(orTail xList flag)
++    | If'(test,th,el) -> If'(annotateTailCalls test false,annotateTailCalls th flag, annotateTailCalls el flag)
++    | Def'(x,value) -> Def'(x,annotateTailCalls value false)
++    | LambdaSimple'(x,body) ->LambdaSimple'(x,annotateTailCalls body true)
++    | LambdaOpt'(x,y,body) ->LambdaOpt'(x,y,annotateTailCalls body true)
++    | Applic'(op,body) -> if(flag) then ApplicTP'(annotateTailCalls op false,orTail body false) else Applic'(annotateTailCalls op false,orTail body false)
++    | Set'(x,y) -> Set'(x,annotateTailCalls y false)
++    | Seq'(x) -> Seq'(orTail x flag)
++    | x -> x
++
++    and orTail e flag =
++      match e with 
++      | [] -> []
++      | car::[] -> [annotateTailCalls car flag]
++      | car::cdr -> [annotateTailCalls car false] @ (orTail cdr flag)
++    
++
++  and debug expr  = 
++    List.map (annotateLexicalRec [[]]) (Tag_Parser.tag_parse_expressions(Reader.read_sexprs(expr))) 
++
++
++  and orList l =
++    match l with 
++    | [] -> false
++    | car::[] -> car
++    | car::cdr -> car || (orList cdr)
++
++  and findVarName v = 
++    match v with 
++    | VarFree(x) -> x
++    | VarParam(x,index) -> x
++    | VarBound(x,index1,index2) -> x
++    
++
++  and orListLexicalPosition l =
++      match l with 
++      | [] -> [VarParam("wrong",-1)]
++      | car::[] -> [car]
++      | car::cdr -> if(findVarName car = "wrong") then (orListLexicalPosition cdr) else [car]@(orListLexicalPosition cdr)
++    
++
++  and varExistInList x varsList =
++    match varsList with
++    | [] -> false
++    | car::[] ->if(car = x) then true else false
++    | car::cdr ->if(car = x) then true else (varExistInList x cdr)
++      
++
++
++  and writeExists var e =
++    match e with
++    | Const'(x) -> false
++    | Var'(x) -> false
++    | Or'(xList) -> orList (List.map (writeExists var) xList)
++    | If'(test,th,el) -> ((writeExists var) test) || ((writeExists var) th) || ((writeExists var) el)
++    | Def'(x,value) -> (writeExists var) value
++    | LambdaSimple'(x,body) ->if (varExistInList var x) then false else (writeExists var) body
++    | LambdaOpt'(x,y,body) ->if ((varExistInList var x) || y = var) then false else (writeExists var) body
++    | Applic'(op,body) -> orList ([((writeExists var) op)] @ List.map (writeExists var) body)
++    | ApplicTP'(op,body) -> orList ([((writeExists var) op)] @ List.map (writeExists var) body)
++    | Set'(x,y) -> if((findVarName x) = var) then true else (writeExists var) y
++    | Seq'(x) -> 
++      orList (List.map (writeExists var) x)
++    | x -> false
++
++  and flatVarList x =
++    match x with 
++    | [] -> []
++    | car::[] -> car
++    | car::cdr -> car @ (flatVarList cdr)
++
++  and findSetLexicalPosition var e =
++    match e with
++    | Or'(xList) -> orListLexicalPosition (flatVarList (List.map (findSetLexicalPosition var) xList))
++    | If'(test,th,el) -> orListLexicalPosition (flatVarList ([((findSetLexicalPosition var) test)] @
++    [((findSetLexicalPosition var) th)] @
++      [((findSetLexicalPosition var) el)]))
++    | Def'(x,value) -> (findSetLexicalPosition var) value
++    | LambdaSimple'(x,body) ->if (varExistInList var x) then [VarParam("wrong",-1)] else  (findSetLexicalPosition var) body
++    | LambdaOpt'(x,y,body) ->if ((varExistInList var x) || y = var) then [VarParam("wrong",-1)] else (findSetLexicalPosition var) body
++    | Applic'(op,body) -> orListLexicalPosition (flatVarList ([((findSetLexicalPosition var) op)] @ List.map (findSetLexicalPosition var) body))
++    | ApplicTP'(op,body) -> orListLexicalPosition (flatVarList ([((findSetLexicalPosition var) op)] @ List.map (findSetLexicalPosition var) body))
++    | Set'(x,y) -> if((findVarName x) = var) then [x] else (findSetLexicalPosition var) y
++    | Seq'(x) -> orListLexicalPosition (flatVarList (List.map (findSetLexicalPosition var) x))
++    | x -> [VarParam("wrong",-1)]
++    
++  and readExists var e =
++    match e with
++    | Const'(x) -> false
++    | Var'(x) -> if(findVarName x = var) then true else false 
++    | Or'(xList) -> orList (List.map (readExists var) xList)
++    | If'(test,th,el) -> ((readExists var) test) || ((readExists var) th) || ((readExists var) el)
++    | Def'(x,value) -> (readExists var) value
++    | LambdaSimple'(x,body) ->if (varExistInList var x) then false else (readExists var) body
++    | LambdaOpt'(x,y,body) -> if ((varExistInList var x) || y = var) then false else  (readExists var) body
++    | Applic'(op,body) -> orList ([((readExists var) op)] @ (List.map (readExists var) body))
++    | ApplicTP'(op,body) -> orList ([((readExists var) op)] @ List.map (readExists var) body)
++    | Set'(x,y) -> (readExists var) y
++    | Seq'(x) -> 
++      orList (List.map (readExists var) x)
++    | x -> false
++
++  and findReadLexicalPosition var e =
++    match e with
++    | Var'(x) -> if(findVarName x = var) then [x] else [VarParam("wrong",-1)]
++    | Or'(xList) -> orListLexicalPosition (flatVarList (List.map (findReadLexicalPosition var) xList))
++    | If'(test,th,el) -> orListLexicalPosition (flatVarList([((findReadLexicalPosition var) test)] @ 
++    [((findReadLexicalPosition var) th)] @
++    [((findReadLexicalPosition var) el)]))
++    | Def'(x,value) -> (findReadLexicalPosition var) value
++    | LambdaSimple'(x,body) ->if (varExistInList var x) then [VarParam("wrong",-1)] else (findReadLexicalPosition var) body
++    | LambdaOpt'(x,y,body) ->if ((varExistInList var x) || y = var) then [VarParam("wrong",-1)] else  (findReadLexicalPosition var) body
++    | Applic'(op,body) -> orListLexicalPosition (flatVarList([((findReadLexicalPosition var) op)] @ List.map (findReadLexicalPosition var) body))
++    | ApplicTP'(op,body) -> orListLexicalPosition (flatVarList([((findReadLexicalPosition var) op)] @ List.map (findReadLexicalPosition var) body))
++    | Set'(x,y) -> (findReadLexicalPosition var) y
++    | Seq'(x) -> orListLexicalPosition (flatVarList(List.map (findReadLexicalPosition var) x))
++    | x -> [VarParam("wrong",-1)]
++    
++
++  and notEqualVars e1 e2 =
++    match e1, e2 with
++    | VarFree(x),VarFree(y) -> if(x=y) then false else true
++    | VarParam(x,xIndex),VarParam(y,yIndex) -> if(x = y && xIndex = yIndex) then false else true
++    | VarBound(x1,y1,xIndex),VarBound(x2,y2,yIndex) -> if(x1 = x2 && y1 = y2 && xIndex = yIndex) then false else true
++    | x -> true
++
++  and checkReadWrite x e =
++    match x with 
++    | [] -> []
++    | car :: [] -> if((writeExists(car) e) && (readExists(car) e))
++      then [car] else []
++    | car :: cdr ->  if((writeExists(car) e) && (readExists(car) e))
++      then [car] @ (checkReadWrite cdr e) else (checkReadWrite cdr e)
++
++
++
++  and changeWriteRead var e =
++    match e with
++    | Const'(x) -> Const'(x)
++    | Var'(x) -> if((findVarName x) = var) then BoxGet'(x) else Var'(x) 
++    | Or'(xList) -> Or' (List.map (changeWriteRead var) xList)
++    | If'(test,th,el) -> If'(((changeWriteRead var) test) , ((changeWriteRead var) th) , ((changeWriteRead var) el))
++    | Def'(x,value) -> Def'(x,(changeWriteRead var) value)
++    | LambdaSimple'(x,body) ->if(varExistInList var x) then LambdaSimple'(x,body) else LambdaSimple'(x,(changeWriteRead var) body)
++    | LambdaOpt'(x,y,body) ->if((varExistInList var x) || y = var) then LambdaOpt'(x,y,body) else LambdaOpt'(x,y,(changeWriteRead var) body)
++    | Applic'(op,body) -> Applic'((changeWriteRead var) op,(List.map (changeWriteRead var) body))  
++    | ApplicTP'(op,body) -> ApplicTP'((changeWriteRead var) op,(List.map (changeWriteRead var) body))  
++    | Set'(x,y) -> if((findVarName x) = var) then BoxSet'(x,(changeWriteRead var) y) else Set'(x,(changeWriteRead var) y)
++    | BoxSet'(x,y) -> if((findVarName x) = var) then BoxSet'(x,(changeWriteRead var) y) else BoxSet'(x,(changeWriteRead var) y)
++    | Seq'(x) -> 
++      Seq' (List.map (changeWriteRead var) x)
++    | x -> x
++    
++  and changeWriteReadAllVars vars e =
++    match vars with
++    | [] -> e
++    | car :: [] -> changeWriteRead car e
++    | car :: cdr -> (changeWriteReadAllVars cdr (changeWriteRead car e))
++
++  and boxRec e =
++    match e with 
++    | Const'(x) -> Const'(x)
++    | Var'(x) -> Var'(x)
++    | Or'(xList) -> Or'(List.map boxRec xList)
++    | If'(test,th,el) -> If' (boxRec test, boxRec th, boxRec el)
++    | Def'(x,value) -> Def'(x,boxRec value) 
++    | Seq'(x) -> Seq' (List.map (boxRec) x)
++    | Set'(x,y) -> Set'(x,boxRec y)
++    | Applic'(op,body) -> Applic' (boxRec op,List.map (boxRec) body)
++    | ApplicTP'(op,body) -> ApplicTP' (boxRec op,List.map (boxRec) body)
++    | LambdaSimple'(x,body) -> handleBoxes e
++    | LambdaOpt'(x,y,body) -> handleBoxes e
++    | x -> x
++
++    and getParamNum params number v = 
++      match params with 
++      | [] -> -1
++      | car :: [] -> if car = v then number else -1
++      | car :: cdr -> if car = v then number else (((getParamNum cdr) (number+1)) v)
++
++
++    and addSetBegin lambdaVars vars =
++        match vars with 
++        | [] ->  []
++        | car :: [] -> [Set'(VarParam(car,((getParamNum lambdaVars) 0) car),Box'(VarParam(car,((getParamNum lambdaVars) 0) car)))]
++        | car :: cdr -> [Set'(VarParam(car,getParamNum lambdaVars 0 car),Box'(VarParam(car,getParamNum lambdaVars 0 car)))] @
++        (addSetBegin lambdaVars cdr)
++
++    and addToSeqList s toAdd =
++      match s with 
++      |Seq'(x) -> Seq'(toAdd @ x)
++      |x -> x 
++
++    and handleBoxes e =
++      match e with 
++      | LambdaSimple'(x,Seq'(body)) -> if(List.length (checkReadWrite x (Seq'(body))) > 0) then 
++        continueLambda (LambdaSimple'(x,
++      (addToSeqList (changeWriteReadAllVars (checkReadWrite x (Seq'(body))) (Seq'(body))) (addSetBegin x (checkReadWrite x (Seq'(body))))))) else
++        continueLambda(e)
++      | LambdaSimple'(x,body) -> if(List.length (checkReadWrite x body) > 0) then 
++        continueLambda (LambdaSimple'(x,
++      Seq'((addSetBegin x (checkReadWrite x (body))) @ [
++      (changeWriteReadAllVars (checkReadWrite x body) body)]
++      ))) else
++        continueLambda(e)
++
++      | LambdaOpt'(x,y,Seq'(body)) -> if(List.length (checkReadWrite (x @ [y]) (Seq'(body))) > 0) then 
++          continueLambda (LambdaOpt'(x,y,
++        (addToSeqList (changeWriteReadAllVars (checkReadWrite (x @ [y]) (Seq'(body))) (Seq'(body))) (addSetBegin (x @ [y]) (checkReadWrite (x @ [y])
++        (Seq'(body))))))) else
++          continueLambda(e)  
++      | LambdaOpt'(x,y,body) -> if(List.length (checkReadWrite (x @ [y]) body) > 0) then 
++        continueLambda (LambdaOpt'(x,y,
++      Seq'((addSetBegin (x @ [y]) (checkReadWrite (x @ [y]) (body))) @ [
++      (changeWriteReadAllVars (checkReadWrite (x @ [y]) body) body)]
++      ))) else
++        continueLambda(e)
++
++      | x -> x
++    
++
++    and continueLambda e =
++      match e with 
++      | LambdaSimple'(x,body) -> LambdaSimple'(x,boxRec body)
++      | LambdaOpt'(x,y,body) -> LambdaOpt'(x,y,boxRec body)
++      | x -> x
++
++
++let annotate_lexical_addresses e = annotateLexicalRec [[]] e;;
++
++let annotate_tail_calls e = annotateTailCalls e false;;
++
++let box_set e = boxRec e;;
+ 
+ let run_semantics expr =
+-  box_set
+-    (annotate_tail_calls
+-       (annotate_lexical_addresses expr));;
++  box_set (annotate_tail_calls (annotate_lexical_addresses expr));;
+   
+ end;; (* struct Semantics *)
+ 
+diff --git a/tag-parser.ml b/tag-parser.ml
+index 138249e..b360a1a 100644
+--- a/tag-parser.ml
++++ b/tag-parser.ml
+@@ -58,8 +58,269 @@ let reserved_word_list =
+ 
+ (* work on the tag parser starts here *)
+ 
+-let tag_parse_expressions sexpr = raise X_not_yet_implemented;;
++let rec tag_parse_atom sexpr = 
++  match sexpr with 
++  | Pair(Symbol("if"), Pair(test, Pair(dit, Pair(dif, Nil))))-> If(tag_parse_atom test, tag_parse_atom dit, tag_parse_atom dif)
++  | Pair(Symbol("if"), Pair(test, Pair(dit, Nil)))-> If(tag_parse_atom test, tag_parse_atom dit, Const(Void))
++  | Pair(Symbol("if"), Pair(test, thenDo))-> If(tag_parse_atom test, tag_parse_atom thenDo, Const(Void))
++  | Pair(Symbol("quote"), Pair(x, Nil)) -> Const(Sexpr(x))
++  | Symbol(x) -> Var(x) 
++  | Pair(Symbol "or", Nil) -> Const(Sexpr(Bool false))
++  | Pair(Symbol "or", Pair(Bool false, Nil)) -> Const(Sexpr(Bool false))
++  | Pair(Symbol "or", Pair(x, Nil)) -> tag_parse_atom x
++  | Pair(Symbol "or", Pair(x, y)) -> Or([tag_parse_atom x] @ (pairToList y))
++  | Pair(Symbol("begin"), Pair(x,Nil)) -> tag_parse_atom x
++  | Pair(Symbol("begin"), Pair(x,y)) -> Seq(removeSeq([tag_parse_atom x] @ (pairToListApp y)))
++  | Pair(Symbol "define",Pair(Pair(var,arglist),expPlus)) -> tag_parse_atom(makeMacro(Pair(Symbol "define",Pair(Pair(var,arglist),expPlus))))
++  | Pair(Symbol "define", Pair(x, Pair(value, z))) -> Def(tag_parse_atom x , tag_parse_atom value)
++  | Pair(Symbol "set!", Pair(x, Pair(a, Nil))) -> Set(tag_parse_atom x , tag_parse_atom a)
++  | Pair(Symbol "lambda", Pair(Nil, Pair(x, Nil))) -> LambdaSimple([],tag_parse_atom x)
++  | Pair(Symbol "lambda", Pair(Nil, Pair(x, y))) -> LambdaSimple([],Seq([tag_parse_atom x] @ (pairToList y)))
++  | Pair(Symbol "lambda", Pair(Pair(a,b), Pair(x, Nil))) -> if (decideProperOrNot (Pair(a,b))) then LambdaSimple(pairToListParameters(Pair(a,b)),tag_parse_atom x)
++    else LambdaOpt(removeLast (Pair(a,b)) ,findOptional (Pair(a,b)), tag_parse_atom (x)) 
++  | Pair(Symbol "lambda", Pair(Pair(a,b), Pair(x, y))) -> if (decideProperOrNot (Pair(a,b))) then LambdaSimple(pairToListParameters(Pair(a,b)),tag_parse_atom (Pair(x,y)))
++    else LambdaOpt(removeLast (Pair(a,b)) ,findOptional (Pair(a,b)), tag_parse_atom (Pair(x, y))) 
++  | Pair(Symbol "lambda", Pair(Symbol a, Pair(x, Nil))) -> LambdaOpt([],a,tag_parse_atom x)
++  | Pair(Symbol "lambda", Pair(Symbol a, Pair(x, y))) -> LambdaOpt([],a,Seq([tag_parse_atom x] @ (pairToList y)))
++  | Pair(Symbol("let"), Pair(Nil, Pair(body, Nil))) -> Applic(LambdaSimple([],tag_parse_atom body),[])
++  | Pair(Symbol("let"), Pair(Nil, Pair(x, y))) -> Applic(LambdaSimple([],Seq([tag_parse_atom x] @ (pairToList y))),[])
++  | Pair(Symbol("let"), Pair(Pair(first, others), Pair(body, y))) ->  tag_parse_atom(Pair( Pair( Symbol("lambda"),
++  Pair(varsToList(varsPairs(Pair(first,others)))
++  , Pair(body,y))),varsToList(varsBodyPairs(Pair(first,others)))))
++  | Pair(Symbol "and",Nil) -> Const(Sexpr(Bool(true)))
++  | Pair(Symbol "and",Pair(x,Nil)) -> tag_parse_atom x
++  | Pair(Symbol "and",Pair(x,y)) -> If(tag_parse_atom x,tag_parse_atom(Pair(Symbol "and",y)),Const(Sexpr(Bool(false))))
++  | Pair(Symbol "and",x) -> tag_parse_atom x 
++  | Pair(Symbol("let*"), Pair(Nil, Pair(body, y))) ->  tag_parse_atom(Pair(Symbol("let"), Pair(Nil, Pair(body, y))))
++  | Pair(Symbol("let*"), Pair(Pair(Pair(x1,y1),Pair(x2,y2)), Pair(body, y))) ->  tag_parse_atom(Pair(Symbol("let"), Pair(Pair(x1,y1),
++  makeMacro(Pair(Symbol "let*",Pair(Pair(x2,y2),Pair(body,y)))))))
++  | Pair(Symbol("let*"), Pair(Pair(x1,y1), Pair(body, y))) ->  tag_parse_atom(Pair(Symbol("let"), Pair(Pair(x1,y1), Pair(body, y))))
+ 
++  | Pair(Symbol "quasiquote",x) -> tag_parse_atom(makeMacro(Pair(Symbol "quasiquote",x)))
++  | Pair(Symbol "letrec",x) -> tag_parse_atom(makeMacro(Pair(Symbol "letrec",x)))
++  | Pair(Symbol("cond"), x) ->  tag_parse_atom(makeMacro(Pair(Symbol("cond"), x)))
++  | Pair(Symbol("pset!"), x) ->  tag_parse_atom(makeMacro(Pair(Symbol("pset!"), x)))
++
++  | Pair(Symbol x,Nil) -> Applic(Var(x),[])
++  | Pair(x,Nil) -> tag_parse_atom x 
++  | Pair( apl, Pair(Pair(x,y),Nil)) -> Applic(tag_parse_atom ( apl) , [tag_parse_atom (Pair(x,y))] @ [Const(Sexpr(Nil))] )
++  | Pair( apl, Pair(x,Nil)) -> Applic(tag_parse_atom ( apl) , [tag_parse_atom x]  )
++  | Pair( apl, Pair(x, y)) -> Applic(tag_parse_atom ( apl) , pairToListApp (Pair(x,y)) )
++  | x -> Const(Sexpr(x))
++
++  and removeSeq x =
++    match x with 
++    | Seq(car) :: cdr -> car @ (removeSeq (cdr))
++    | car :: cdr -> [car] @ (removeSeq (cdr))
++    | x -> x 	  
++
++  and matchAtom x = 
++    match x with
++    | Nil -> Nil
++    | Number(Fraction(up,down)) -> Number(Fraction(up,down)) 
++    | Symbol s -> Symbol s
++    | Number(Float f) -> Number(Float f)
++    | String s -> String s
++    | Bool b -> Bool b
++    | Pair (a,b) -> Pair(a,b)  
++    | Char c -> Char c
++  and varsToList x =
++    match x with 
++    | Pair(Pair(x,y),Nil) -> Pair(x,y)
++    | Pair(Pair(x,y),Pair(a,b)) -> Pair(x,varsToList(Pair(a,b)))  
++    | Pair(x,Nil) -> Pair(x , Nil)  
++    | x -> Nil
++  and varsPairs p = 
++    match p with 
++    | Pair(Symbol s,Pair(value,Nil)) -> Pair(Symbol s,Nil)
++    | Pair(Pair(a,b),Pair(x,y)) -> Pair((varsPairs (Pair(a,b))),(varsPairs (Pair(x,y))))
++    | Pair(Pair(a,b),Nil) -> varsPairs (Pair(a,b))
++    | Symbol s -> Pair(Symbol s,Nil)
++    | x -> Nil
++  and varsPairsPset p = 
++    match p with 
++    | Pair(Symbol s,Pair(value,Nil)) -> Pair(Symbol (s^"2"),Nil)
++    | Pair(Pair(a,b),Pair(x,y)) -> Pair((varsPairsPset (Pair(a,b))),(varsPairsPset (Pair(x,y))))
++    | Pair(Pair(a,b),Nil) -> varsPairsPset (Pair(a,b))
++    | Symbol s -> Pair(Symbol (s^"2"),Nil)
++    | x -> Nil
++  and varsBodyPairs p = 
++    match p with 
++    | Pair(Symbol s,Pair(value,Nil)) -> Pair(value,Nil)
++    | Pair(Pair(a,b),Pair(x,y)) -> Pair((varsBodyPairs (Pair(a,b))),(varsBodyPairs (Pair(x,y))))
++    | Pair(Pair(a,b),Nil) -> varsBodyPairs (Pair(a,b))
++    | x -> x
++  and noBegin p = 
++    match p with 
++    | Pair(Symbol("begin"), Pair(x,y)) -> tag_parse_atom (Pair(x,y))
++    | Pair(Symbol "lambda", Pair(Nil, Pair(x, y))) -> LambdaSimple([],Seq([tag_parse_atom x] @ (pairToListApp y)))
++    | x -> tag_parse_atom x
++  and pairToListApp p =
++    match p with
++    | Nil -> []
++    | Pair(Symbol "lambda",x) -> [tag_parse_atom (Pair(Symbol "lambda",x))]
++    | Pair(Symbol "let",x) -> [tag_parse_atom (Pair(Symbol "let",x))]
++    | Pair(Symbol "or",x) -> [tag_parse_atom (Pair(Symbol "or",x))]
++    | Pair(Symbol "define",x) -> [tag_parse_atom (Pair(Symbol "define",x))]
++    | Pair(Symbol "set!",x) -> [tag_parse_atom (Pair(Symbol "set!",x))]
++    | Pair(Symbol "if",x) -> [tag_parse_atom (Pair(Symbol "if",x))]
++    | Pair(Symbol "quote",x) -> [tag_parse_atom (Pair(Symbol "quote",x))]
++    | Pair(Symbol("begin"),Pair(a,b)) -> pairToListApp (Pair(a,b))
++    | Pair(Pair(Symbol("begin"),y),Pair(a,b)) -> pairToListApp (Pair(Symbol("begin"),y)) @ pairToListApp (Pair(a,b))
++    | Pair(Pair(x,y),Pair(a,b)) -> [tag_parse_atom (Pair(x,y))] @ pairToListApp (Pair(a,b))
++    | Pair(Pair(x,y),Nil) -> [tag_parse_atom (Pair(x,y))]
++    | Pair(Pair(x,y),b) -> pairToListApp (Pair(x,y)) @ [tag_parse_atom b]
++    | Pair(x,Pair(a,b)) -> tag_parse_atom x :: pairToListApp (Pair(a,b))
++    | Pair(x,Nil) -> [tag_parse_atom x] 
++    | Pair(x,y) -> [tag_parse_atom x; tag_parse_atom y] 
++    | x -> [tag_parse_atom x]
++  and pairToList p = 
++    match p with
++    | Pair(Symbol "lambda",x) -> [tag_parse_atom (Pair(Symbol "lambda",x))]
++    | Pair(Symbol "let",x) -> [tag_parse_atom (Pair(Symbol "let",x))]
++    | Pair(Symbol "or",x) -> [tag_parse_atom (Pair(Symbol "or",x))]
++    | Pair(Symbol "define",x) -> [tag_parse_atom (Pair(Symbol "define",x))]
++    | Pair(Symbol "set!",x) -> [tag_parse_atom (Pair(Symbol "set!",x))]
++    | Pair(Symbol "if",x) -> [tag_parse_atom (Pair(Symbol "if",x))]
++    | Pair(Symbol "quote",x) -> [tag_parse_atom (Pair(Symbol "quote",x))]
++    | Pair(Symbol("begin"),Pair(a,b)) -> pairToListApp (Pair(a,b))
++    | Pair(Pair(Symbol("begin"),y),Pair(a,b)) -> pairToListApp (Pair(Symbol("begin"),y)) @ pairToListApp (Pair(a,b))
++    | Nil -> []
++    | Pair(Pair(x,y),Pair(a,b)) -> [tag_parse_atom (Pair(x,y))] @ [tag_parse_atom (Pair(a,b))]
++    | Pair(Pair(x,y),b) -> [tag_parse_atom (Pair(x,y))] @ [tag_parse_atom b]
++    | Pair(x,Pair(a,b)) -> tag_parse_atom x :: [tag_parse_atom (Pair(a,b))]
++    | Pair(x,Nil) -> [tag_parse_atom x] 
++    | Pair(x,y) -> [tag_parse_atom x; tag_parse_atom y] 
++    | x -> [tag_parse_atom x]
++  and pairToListParameters p = 
++    match p with
++    | Nil -> []
++    | Pair(Pair(x,y),Pair(a,b)) -> pairToListParameters (Pair(x,y)) @ pairToListParameters (Pair(a,b))
++    | Pair(Pair(x,y),String b) -> pairToListParameters (Pair(x,y)) @ [ b]
++    | Pair(Symbol x,Pair(a,b)) ->  ( x) :: pairToListParameters (Pair(a,b))
++    | Pair(Symbol x,Nil) -> [x] 
++    | Pair(Symbol x,String y) -> [  x; y] 
++    | Symbol x -> [x] 
++    | x -> []
++  and decideProperOrNot p =
++    match p with 
++    | Nil -> true
++    | Pair(x,Pair(a,b)) -> decideProperOrNot (Pair(a,b)) 
++    | Pair(x,Nil) -> true
++    | Pair(x,y) ->  false
++    | x -> false
++  and findOptional p =
++    match p with 
++    | Pair(x,Pair(a,b)) -> findOptional (Pair(a,b)) 
++    | Pair(x,Symbol y) -> y
++    | Symbol x -> x
++    | x -> ""
++  and removeLast p = 
++    match p with 
++    | Pair(Symbol x,Pair(a,b)) -> [x] @ removeLast (Pair(a,b)) 
++    | Pair(Symbol x,y) -> [x]
++    | Symbol x -> [x] 
++    | x -> []
++
++  and varsPairsLetRec p = 
++  match p with 
++  | Pair(Pair(a,b),Pair(x,y)) -> addLast((varsPairsLetRec (Pair(a,b))))((varsPairsLetRec (Pair(x,y))))
++  | Pair(Pair(a,b),Nil) -> varsPairsLetRec (Pair(a,b))
++  | Pair(s,Pair(value,Nil)) -> Pair(Pair(s,Pair(Pair(Symbol ("quote"),Pair(Symbol("whatever"),Nil)),Nil)),Nil)
++  | s -> Pair(s,Pair(Symbol("whatever"),Nil))
++
++  and setPairsLetRec p = 
++  match p with 
++  | Pair(Pair(a,b),Pair(x,y)) -> addLast((setPairsLetRec (Pair(a,b))))(setPairsLetRec (Pair(x,y)))
++  | Pair(Pair(a,b),Nil) -> setPairsLetRec (Pair(a,b))
++  | Pair(s,Pair(value,Nil)) -> Pair(Pair(Symbol "set!",Pair(s,Pair(value,Nil))),Nil)
++  | s -> Pair(s,Symbol("whatever"))
++
++  and setPairsPset p = 
++  match p with 
++  | Pair(Pair(a,b),Pair(x,y)) -> addLast((setPairsPset (Pair(a,b))))(setPairsPset (Pair(x,y)))
++  | Pair(Pair(a,b),Nil) -> setPairsPset (Pair(a,b))
++  | Pair(Symbol s,Pair(value,Nil)) -> Pair(Pair(Symbol "set!",Pair(Symbol s,Pair(Symbol (s^"2"),Nil))),Nil)
++  | s -> Pair(s,Symbol("whatever"))
++
++
++  and addLast p last = 
++  match p with 
++  | Pair(s,Nil) -> Pair(s,last)
++  | Pair(Pair(a,b),Pair(x,y)) -> Pair(Pair(a,b),(addLast (Pair(x,y)) last))
++  | Pair(a,Pair(x,y)) -> Pair(a,(addLast (Pair(x,y)) last))
++  | Nil -> Nil
++  | s -> Pair(s,last)
++
++
++  
++
++  and makeMacro s =
++    match s with
++    | Pair(Symbol("let"), Pair(Pair(first, others), Pair(body, y))) ->  Pair( Pair( Symbol("lambda"),
++    Pair(varsToList(varsPairs(Pair(first,others)))
++    , Pair(body,y))),varsToList(varsBodyPairs(Pair(first,others))))
++    | Pair(Symbol("let*"), Pair(Nil, Pair(body, y))) ->  makeMacro(Pair(Symbol("let"), Pair(Nil, Pair(body, y))))
++    | Pair(Symbol("let*"), Pair(Pair(Pair(x1,y1),Pair(x2,y2)), Pair(body, y))) ->  makeMacro(Pair(Symbol("let"), Pair(Pair(x1,y1),
++     makeMacro(Pair(Symbol "let*",Pair(Pair(x2,y2),Pair(body,y)))))))
++    | Pair(Symbol("let*"), Pair(Pair(x1,y1), Pair(body, y))) ->  makeMacro(Pair(Symbol("let"), Pair(Pair(x1,y1), Pair(body, y))))
++
++    | Pair(Symbol("letrec"), Pair(Pair(x1,y1), Pair(body, y))) ->  (Pair(Symbol("let"),
++     Pair(varsPairsLetRec(Pair(x1,y1)),
++     Pair(Symbol "begin",addLast(((setPairsLetRec(Pair(x1,y1))))) (Pair(body, y))))))
++    
++    | Pair(Symbol "quasiquote",Pair(Pair(Symbol "unquote",Pair(x,Nil)),Nil)) ->  x
++    | Pair(Symbol "quasiquote",Pair(Symbol x,Nil)) ->  (Pair(Symbol "quote",Pair(Symbol x,Nil)))
++    | Pair(Symbol "quasiquote",Pair(Nil,Nil)) ->  (Pair(Symbol "quote",Pair(Nil,Nil)))
++
++
++    | Pair(Symbol "quasiquote",Pair(Pair(Symbol "unquote-splicing",Pair(a,Nil)),Nil)) -> a
++    | Pair(Symbol "quasiquote",Pair(Pair(Pair(Symbol "unquote-splicing",Pair(a,Nil)),b),Nil)) -> Pair(Symbol "append",
++    Pair(a,Pair(makeMacro(Pair(Symbol "quasiquote",Pair(b,Nil))),Nil)))
++
++
++    | Pair(Symbol "quasiquote",Pair(Pair(a,Nil),Nil)) -> Pair(Symbol "cons",Pair(makeMacro(Pair(Symbol "quasiquote",
++    Pair(a,Nil))),makeMacro(Pair(Symbol "quasiquote",Nil))))
++    | Pair(Symbol "quasiquote",Pair(Pair(a,b),Nil)) -> Pair(Symbol "cons",Pair(makeMacro(Pair(Symbol "quasiquote",
++    Pair(a,Nil))),Pair(makeMacro(Pair(Symbol "quasiquote",Pair(b,Nil))),Nil)))
++    | Pair(Symbol("quasiquote"), Pair(x, Nil)) -> Pair(Symbol "quote",Pair(x,Nil))
++    | Pair(Symbol("quasiquote"), Nil) -> Pair (Pair (Symbol "quote", Pair (Nil, Nil)), Nil)
++
++    | Pair(Symbol "define",Pair(Pair(var,arglist),expPlus)) -> Pair(Symbol "define",Pair(var,Pair(Pair(Symbol "lambda",Pair(arglist,expPlus)),Nil)))
+   
++
++    | Pair(Symbol("cond"), Pair(Pair(test,Pair(Symbol "=>",others)),Nil)) ->  Pair(Symbol "let",Pair(
++      Pair(Pair(Symbol "value",Pair(test,Nil)),
++      Pair(Pair(Symbol "f",Pair(Pair(Symbol("lambda"), Pair(Nil,others)),Nil)),
++         Nil )) , 
++        Pair(Pair(Symbol "if",Pair(Symbol "value",Pair(Pair(Pair(Symbol "f",Nil),Pair(Symbol "value",Nil)) , Nil))),Nil)))  
++
++    | Pair(Symbol("cond"), Pair(Pair(test,Pair(Symbol "=>",others)),otherRibs)) ->  Pair(Symbol "let",Pair(
++    Pair(Pair(Symbol "value",Pair(test,Nil)),
++    Pair(Pair(Symbol "f",Pair(Pair(Symbol("lambda"), Pair(Nil,others)),Nil)),
++      Pair(Pair(Symbol "rest",Pair(Pair(Symbol("lambda"), Pair(Nil,makeMacro(Pair(Symbol("cond"),otherRibs)))),Nil)) , Nil ))) , 
++      Pair(Pair(Symbol "if",Pair(Symbol "value",Pair(Pair(Pair(Symbol "f",Nil),Pair(Symbol "value",Nil)) , Pair(Pair(Symbol "rest",Nil),Nil)))),Nil)))
++      
++
++    | Pair(Symbol("cond"), Pair(Pair(Symbol "else",others),otherRibs)) ->  Pair(Pair(Symbol("begin"), others),Nil)
++
++    | Pair(Symbol("cond"), Pair(Pair(test,others),Nil)) ->  Pair(Symbol "if",Pair(test,Pair(Pair(Symbol("begin"), others),
++      Nil)))
++    | Pair(Symbol("cond"), Pair(Pair(test,others),otherRibs)) ->  Pair(Symbol "if",Pair(test,Pair(Pair(Symbol("begin"), others),
++      Pair(makeMacro(Pair(Symbol("cond"),otherRibs)),Nil))))
++    | Pair(Symbol "cond",Nil) -> Nil
++
++    | Pair(Symbol "pset!",Pair(first, others)) -> Pair(Pair(Symbol "lambda",Pair(varsToList(varsPairsPset(Pair(first,others))),
++    Pair(Pair(Symbol "begin",setPairsPset(Pair(first, others))),Nil))),
++    varsToList(varsBodyPairs(Pair(first,others)))
++    )
++
++    | x -> x 
++
++
++let tag_parse_expressions sexpr  = 
++  List.map tag_parse_atom sexpr ;; 
++
++
+ end;; (* struct Tag_Parser *)
+ 

@@ -1,0 +1,8 @@
+
+LambdaSimple' (["x"],
+ LambdaSimple' ([],
+  Seq'
+   [Applic' (LambdaSimple' (["x"], ApplicTP' (Var' (VarParam ("x", 0)), [])),
+     [Var' (VarBound ("x", 0, 0))]);
+    LambdaSimple' ([],
+     LambdaSimple' ([], ApplicTP' (Var' (VarBound ("x", 2, 0)), [])))]))

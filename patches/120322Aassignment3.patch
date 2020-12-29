@@ -1,0 +1,237 @@
+diff --git a/readme.txt b/readme.txt
+index e69de29..7e3601c 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1,7 @@
++We (Yadin Benyamin 206819526 and Assaf Moreno 311318240) assert that the work we submitted is 100% our own. We have not received any
++part from any other student in the class, nor have we give parts of it for use to others.
++Nor have we used code from other sources: Courses taught previously at this university,
++courses taught at other universities, various bits of code found on the internet, etc.
++We realize that should our code be found to contain code from other sources, that a
++formal case shall be opened against us with va’adat mishma’at, in pursuit of disciplinary
++action.
+\ No newline at end of file
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..4384d40 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -69,17 +69,215 @@ end;;
+ 
+ module Semantics : SEMANTICS = struct
+ 
+-let annotate_lexical_addresses e = raise X_not_yet_implemented;;
++let rec annotate_lexical_addresses e =  
++    match e with
++    | Const(c) -> Const'(c)
++    | Var(varName) -> Var'(VarFree(varName))
++    | If(test, dit, dif) -> If'(annotate_lexical_addresses test, annotate_lexical_addresses dit, annotate_lexical_addresses dif)
++    | Seq(l) -> Seq'(List.map annotate_lexical_addresses l)
++    | Set(v, exp) -> 
++               let var = annotate_lexical_addresses v in
++                (match var with
++                | Var'(x) -> Set'(x, annotate_lexical_addresses exp)
++                | _-> raise X_syntax_error)
++    | Def(v, exp) -> 
++                let var = annotate_lexical_addresses v in
++                (match var with
++                | Var'(x) -> Def'(x, annotate_lexical_addresses exp)
++                | _-> raise X_syntax_error)
++    
++    | Or(l) -> Or'(List.map annotate_lexical_addresses l)
++    | LambdaSimple(args, body) -> LambdaSimple'(args, annotate_lexical_addresses_lambda [args] body)
++    | LambdaOpt(args, last, body) -> LambdaOpt'(args, last, annotate_lexical_addresses_lambda [List.append args [last]] body)
++    | Applic(e, exps) -> Applic'(annotate_lexical_addresses e, List.map annotate_lexical_addresses exps)
++    (* | _-> raise X_syntax_error *)
++(* ----------------------------------------------------------lexical_addresses lambda-------------------------------------------------------- *)
++(* args: [args1, args2, ...] *)
++and annotate_lexical_addresses_lambda args body =
++    match body with
++    | Const(c) -> Const'(c)
++    | Var(varName) ->  
++        let (major, minor) = get_major_minor varName args in
++        (match (major, minor) with
++        | (-1, _) -> Var'(VarFree(varName))
++        | (0, _) -> Var'(VarParam(varName, minor))
++        | _-> Var'(VarBound(varName, major-1, minor)) 
++        )
++    | If(test, dit, dif) -> If'(annotate_lexical_addresses_lambda args test, annotate_lexical_addresses_lambda args dit, annotate_lexical_addresses_lambda args dif)
++    | Seq(l) -> Seq'(List.map (fun e-> annotate_lexical_addresses_lambda args e) l)
++    | Set(v, exp) -> 
++               let var = annotate_lexical_addresses_lambda args v in
++                (match var with
++                | Var'(x) -> Set'(x, annotate_lexical_addresses_lambda args exp)
++                | _-> raise X_syntax_error)
++    | Def(v, exp) -> 
++                let var = annotate_lexical_addresses_lambda args v in
++                (match var with
++                | Var'(x) -> Def'(x, annotate_lexical_addresses_lambda args exp)
++                | _-> raise X_syntax_error)
++    | Or(l) -> Or'(List.map (fun e-> annotate_lexical_addresses_lambda args e) l)
++    | LambdaSimple(args1, body1) -> LambdaSimple'(args1, annotate_lexical_addresses_lambda (List.append [args1] args) body1)
++    | LambdaOpt(args1, last1, body1) -> LambdaOpt'(args1, last1, annotate_lexical_addresses_lambda (List.append [List.append args1 [last1]] args) body1)
++    | Applic(e, exps) -> Applic'(annotate_lexical_addresses_lambda args e, List.map (fun e-> annotate_lexical_addresses_lambda args e) exps)
++    (* | _-> raise X_syntax_error *)
+ 
+-let annotate_tail_calls e = raise X_not_yet_implemented;;
+ 
+-let box_set e = raise X_not_yet_implemented;;
++and get_minor e l = (* returns e's index in l *)
++    if e = List.nth l 0
++    then 0
++    else 1 + get_minor e (List.tl l)
++
++and get_major e lol = (* returns e's list index in lol. returns lol.length if e isn't there *)
++    if lol != []
++    then if List.mem e (List.nth lol 0)
++         then 0
++         else 1 + get_major e (List.tl lol)
++    else 0
++    
++(* lol means list of lists 
++   returns (e's list index in lol, minor) *)
++and get_major_minor e lol = 
++    let major = get_major e lol in 
++    if major = List.length lol
++    then (-1, -1)
++    else (major, get_minor e (List.nth lol major))
++    
++;;
++
++let rec tp_calls e in_tp =
++    match e with
++    | Const'(_) | Var'(_) -> e
++    | If'(test, dit, dif) -> If'(tp_calls test false, tp_calls dit in_tp, tp_calls dif in_tp)
++    | Seq'(l) -> 
++           let shortedList = List.rev (List.tl (List.rev l)) in
++           let last = lastOf l in
++           Seq'(List.append (List.map (fun e-> tp_calls e false) shortedList) [tp_calls last in_tp])
++    | Set'(v, exp) -> Set'(v, tp_calls exp false)
++    | Def'(v, exp) -> Def'(v, tp_calls exp false)
++    | Or'(exps) -> 
++    (* exps can't be [] due to tag-parser *)
++           let shortedList = List.rev (List.tl (List.rev exps)) in
++           let last = lastOf exps in
++           Or'(List.append (List.map (fun e-> tp_calls e false) shortedList) [tp_calls last in_tp])
++    | LambdaSimple'(args, body) -> LambdaSimple'(args, tp_calls body true)
++    | LambdaOpt'(args, last, body) -> LambdaOpt'(args, last, tp_calls body true)
++    | Applic'(e, exps) ->
++          if in_tp
++          then ApplicTP'(tp_calls e false, List.map (fun e-> tp_calls e false) exps)
++          else Applic'(tp_calls e false, List.map (fun e-> tp_calls e false) exps)   
++    | _-> raise X_syntax_error
++
++and lastOf list =  (* returns last element of a non-empty list *)
++    match list with
++      | [x] -> x
++      | _ :: t -> lastOf t
++      | _-> raise X_syntax_error;;
++
++let annotate_tail_calls e = tp_calls e false;;
++
++
++(* let rec boxing e =
++
++    match e with
++        | Const'(_) | Var'(_) -> e
++        | Applic'(e, exps) -> e
++        | Or'(exps) -> Or'(List.map (fun e-> boxing e) exps)
++        | If'(test, dit, dif) -> If'(boxing test, boxing dit, boxing dif)
++        | Seq'(l) -> Seq'(List.map (fun e-> boxing e) l)
++        | Def'(v, exp) -> Def'(v, boxing exp)
++        | Set'(v, exp) -> Set'(v, boxing exp)
++        | LambdaSimple'(args, body) -> 
++                let args_to_be_boxed_list =  (* args_for_boxing args body 0 [(arg1_to_be_boxed, its index),...,(argn_to_be_boxed, its index)] *) in
++                if args_to_be_boxed_list = []
++                then 
++                    let body_after_Box_set_get = change_to_box_set_get body args_to_be_boxed_list in
++                    let init_seq_of_body = List.map (fun (arg,i)-> Set'(VarParam(arg, i), Box'(VarParam(arg,i)))) args_to_be_boxed_list in
++                    match body_after_Box_set_get with  (* preventing nested sequence *)
++                                     | Seq'(l) -> LambdaSimple'(args, boxing (Seq'((List.append init_seq_of_body l)))) 
++                                     | _-> LambdaSimple'(args, Seq'(List.append init_seq_of_body [body_after_Box_set_get])) 
++
++                    
++                else LambdaSimple'(args, boxing body)
++        | LambdaOpt'(args, last, body) -> e
++        | _-> raise X_syntax_error won't get here *)
++        
++        
++    
++(*  ▶ Read occurrence within a closure
++    ▶ Write occurrence within another closure
++    ▶ Both occurrences already share a rib *)
++
++    (* 1. Seq' ([...; <write-occur>; ...; E; ...]) where E is an expr that contains a <read-occur>.
++       2. Seq' ([...; <read-occur>;  ...; E; ...]) where E is an expr that contains a <write-occur>. *)
++(* and args_for_boxing args body argIndex =
++
++    match args with
++    | [] -> []
++    | [arg] -> check arg body [false, false, false, false, false] argIndex
++    | arg :: rest -> List.append (check arg body [false, false, false, false, false] argIndex) (args_for_boxing rest body (argIndex+1)) *)
++    (* if args = [] then []
++    else
++        let occursList = read_write_occurs_list args body in  = [(Var'1, "read"),...,(Var'n, "write")] *)
++(* checks if arg needs to be boxed *)
++(* and check arg body flags argIndex =
++    match flags with
++    (* | *)
++    (* | [true,...,true] -> [(arg, argIndex)] *)
++    | _-> match body with
++          | Seq'(s) ->  
++          |
++          | *)
++
++(* and read_write_occurs_list args body =
++    match args with 
++                    | [argName] -> read_write_occurs_list_per_arg argName body []
++                    | argName :: restArgs -> List.append (read_write_occurs_list_per_arg argName body []) (read_write_occurs_list restArgs body)
++
++and read_write_occurs_list_per_arg argName body l =
++    match body with
++        | Var'(v) -> (match v with
++                     | VarParam(arg_name1, _) -> if arg_name1=argName then List.append l [(v, "read")]
++                     | VarBound(arg_name1, _,_) -> if arg_name1=argName then List.append l [(v, "read")] )
++        | Set'(v, exp) -> (match v with
++                          | VarParam(arg_name1, _) -> if arg_name1=argName then List.append l [(v, "write")]
++                          | VarBound(arg_name1, _,_) -> if arg_name1=argName then List.append l [(v, "write")] )
++         
++        | If'(test, dit, dif) -> List.append (List.append (read_write_occurs_list_per_arg argName test l) (read_write_occurs_list_per_arg argName dit [])) (read_write_occurs_list_per_arg argName dif [])
++        | Seq'(exps) -> read_write_occurs_list_per_arg argName exps l
++        | Def'(v, exp) -> read_write_occurs_list_per_arg argName exp l
++        | Or'(exps) -> read_write_occurs_list_per_arg argName exps l
++        | LambdaSimple'(args, body) -> read_write_occurs_list_per_arg argName body l
++        | LambdaOpt'(args, last, body) -> read_write_occurs_list_per_arg argName body l
++        | Applic'(e, exps) -> List.append (read_write_occurs_list_per_arg argName e l) (read_write_occurs_list_per_arg argName exps []) 
++        | _-> l (* case Const' *)
++
++and change_to_box_set_get body args_list = 
++    match body with
++        | Var'(v) -> (match v with
++                     | VarParam(name, _) -> if List.mem (name, _) args_list then BoxGet'(v)
++                     | VarBound(name, _,_) -> if List.mem (name, _) args_list then BoxGet'(v) ) 
++        | Set'(v, exp) -> (match v with
++                          | VarParam(name, _) -> if List.mem (name, _) args_list then BoxSet'(v, exp)
++                          | VarBound(name, _,_) -> if List.mem (name, _) args_list then BoxSet'(v, exp) )
++        | If'(test, dit, dif) -> If'(change_to_box_set_get test args_list, change_to_box_set_get dit args_list, change_to_box_set_get dif args_list)
++        | Seq'(exps) -> Seq'(List.map (fun e-> change_to_box_set_get e args_list) exps)
++        | Def'(v, exp) -> Def'(v, change_to_box_set_get exp args_list)
++        | Or'(exps) -> Or'(List.map (fun e-> change_to_box_set_get e args_list) exps)
++        | LambdaSimple'(args, body) -> LambdaSimple'(args, change_to_box_set_get body args_list)
++        | LambdaOpt'(args, last, body) -> LambdaOpt'(args, last, change_to_box_set_get body args_list)
++        | Applic'(e, exps) -> Applic'(change_to_box_set_get e args_list, List.map (fun e-> change_to_box_set_get e args_list) exps)
++        | _-> body (* won't get here *)
++
++and should_be_boxed args body = 
++
++;; *)
++let box_set e = (* boxing *) e ;;
+ 
+ let run_semantics expr =
+   box_set
+     (annotate_tail_calls
+        (annotate_lexical_addresses expr));;
+   
+-end;; (* struct Semantics *)
++end;; (*struct Semantics *)
+ 
+ 

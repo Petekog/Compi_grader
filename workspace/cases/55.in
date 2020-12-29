@@ -1,0 +1,5 @@
+Def (Var "func",
+ LambdaOpt ([], "x",
+  Applic (Var "list",
+   [LambdaSimple ([], Var "x"); LambdaSimple (["z"], Set (Var "x", Var "z"));
+    LambdaSimple (["z"], Set (Var "x", Var "z"))])))

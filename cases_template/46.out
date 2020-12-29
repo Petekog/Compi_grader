@@ -1,0 +1,10 @@
+
+Def' (Var' (VarFree "test"),
+ LambdaSimple' (["x"; "y"],
+  Seq'
+   [Set' (Var' (VarParam ("x", 0)), Box' (VarParam ("x", 0)));
+    If' (BoxGet' (VarParam ("x", 0)),
+     LambdaSimple' ([],
+      Set' (Var' (VarBound ("y", 0, 1)), BoxGet' (VarBound ("x", 0, 0)))),
+     LambdaSimple' (["z"],
+      BoxSet' (VarBound ("x", 0, 0), Var' (VarParam ("z", 0)))))]))

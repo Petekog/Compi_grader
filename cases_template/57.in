@@ -1,0 +1,9 @@
+Def (Var "func",
+ LambdaSimple (["x"; "y"; "z"; "w"],
+  Applic (Var "list",
+   [LambdaSimple ([], Var "x"); LambdaSimple ([], Var "y");
+    LambdaSimple ([], Var "z"); LambdaSimple ([], Var "w");
+    LambdaSimple ([], Set (Var "x", Const (Sexpr (Number (Fraction (0, 1))))));
+    LambdaSimple ([], Set (Var "y", Const (Sexpr (Number (Fraction (1, 1))))));
+    LambdaSimple ([], Set (Var "z", Const (Sexpr (Number (Fraction (2, 1))))));
+    LambdaSimple ([], Set (Var "w", Const (Sexpr (Number (Fraction (3, 1))))))])))

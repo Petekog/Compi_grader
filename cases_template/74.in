@@ -1,0 +1,6 @@
+LambdaSimple (["a"],
+  Seq
+   [LambdaSimple ([],
+     LambdaSimple (["x"; "y"; "z"],
+      Or [Applic (Var "x", [Var "y"]); Applic (Var "a", [Var "z"])]));
+    LambdaSimple (["x"], Applic (Var "a", [Var "x"]))])

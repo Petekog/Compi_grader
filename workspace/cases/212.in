@@ -1,0 +1,1 @@
+If (Var "x", Applic (Var "x", []), Var "x")

@@ -1,0 +1,5 @@
+Def (Var "foo3",
+ LambdaOpt (["x"], "y",
+  Seq
+   [LambdaSimple ([], Var "x"); LambdaSimple ([], Var "y");
+    LambdaSimple ([], Set (Var "x", Var "y"))]))

@@ -1,0 +1,5 @@
+
+LambdaSimple' (["x"; "y"; "z"],
+ ApplicTP' (Var' (VarFree "+"),
+  [Var' (VarParam ("x", 0)); Var' (VarParam ("y", 1));
+   Var' (VarParam ("z", 2))]))

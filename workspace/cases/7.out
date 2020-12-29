@@ -1,0 +1,10 @@
+
+Def' (Var' (VarFree "a"),
+ Applic'
+  (LambdaSimple' ([],
+    LambdaOpt' ([], "x",
+     Seq'
+      [Var' (VarParam ("x", 0));
+       LambdaOpt' ([], "y",
+        Set' (Var' (VarParam ("y", 0)), Const' (Sexpr (Number (Fraction (1, 1))))))])),
+  []))

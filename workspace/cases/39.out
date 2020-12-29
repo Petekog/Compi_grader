@@ -1,0 +1,10 @@
+
+LambdaOpt' (["x"; "y"], "z",
+ ApplicTP' (Var' (VarFree "+"),
+  [Var' (VarParam ("x", 0)); Var' (VarParam ("y", 1));
+   LambdaSimple' (["z"],
+    ApplicTP' (Var' (VarFree "+"),
+     [Var' (VarParam ("z", 0));
+      LambdaSimple' (["z"],
+       ApplicTP' (Var' (VarFree "+"),
+        [Var' (VarParam ("z", 0)); Var' (VarBound ("y", 1, 1))]))]))]))

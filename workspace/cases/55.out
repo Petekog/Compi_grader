@@ -1,0 +1,11 @@
+
+Def' (Var' (VarFree "func"),
+ LambdaOpt' ([], "x",
+  Seq'
+   [Set' (Var' (VarParam ("x", 0)), Box' (VarParam ("x", 0)));
+    ApplicTP' (Var' (VarFree "list"),
+     [LambdaSimple' ([], BoxGet' (VarBound ("x", 0, 0)));
+      LambdaSimple' (["z"],
+       BoxSet' (VarBound ("x", 0, 0), Var' (VarParam ("z", 0))));
+      LambdaSimple' (["z"],
+       BoxSet' (VarBound ("x", 0, 0), Var' (VarParam ("z", 0))))])]))

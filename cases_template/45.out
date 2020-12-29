@@ -1,0 +1,6 @@
+
+Def' (Var' (VarFree "test"),
+ LambdaSimple' (["x"; "y"],
+  Set' (Var' (VarParam ("x", 0)),
+   Applic' (Var' (VarFree "*"),
+    [Var' (VarParam ("x", 0)); Var' (VarParam ("y", 1))]))))

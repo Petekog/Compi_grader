@@ -1,0 +1,11 @@
+LambdaSimple' (["x"; "y"],
+   Seq'
+    [Applic' (VarParam ("x", 0), [VarParam ("y", 1)]);
+     LambdaSimple' ([],
+      LambdaSimple' ([],
+       LambdaSimple' ([],
+        Set' (VarBound ("x", 2, 0),
+         Applic'
+          (LambdaSimple' (["z"],
+            Set' (VarBound ("y", 3, 1), VarBound ("x", 3, 0))),
+          [VarBound ("y", 2, 1)])))))])

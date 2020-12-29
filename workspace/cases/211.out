@@ -1,0 +1,2 @@
+LambdaOpt' ([], "x", Seq' ([LambdaSimple' (["x"], Set' (Var' (VarParam ("x", 0)), Const' (Sexpr (Number (Fraction (1, 1))))));
+ ApplicTP' (Var' (VarFree "car"), [Var' (VarParam ("x", 0))])]))

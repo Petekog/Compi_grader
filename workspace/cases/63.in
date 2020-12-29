@@ -1,0 +1,5 @@
+LambdaSimple ([],
+  If (Applic (Var "f", [Var "x"]),
+   If (Applic (Var "g", [Var "y"]), Applic (Var "h", [Var "z"]),
+    Const (Sexpr (Bool false))),
+   Const (Sexpr (Bool false))))

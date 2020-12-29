@@ -1,0 +1,4 @@
+Def (Var "test",
+ LambdaSimple (["x"; "y"],
+  If (Var "x", LambdaSimple ([], Set (Var "y", Var "x")),
+   LambdaSimple (["z"], Set (Var "x", Var "z")))))

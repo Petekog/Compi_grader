@@ -1,0 +1,1114 @@
+diff --git a/reader.ml b/reader.ml
+index 32445c2..2021a70 100644
+--- a/reader.ml
++++ b/reader.ml
+@@ -1,5 +1,6 @@
+ 
+ #use "pc.ml";;
++open PC ;;
+ 
+ exception X_not_yet_implemented;;
+ exception X_this_should_not_happen;;
+@@ -31,6 +32,40 @@ let rec sexpr_eq s1 s2 =
+ 
+ module Reader: sig
+   val read_sexprs : string -> sexpr list
++  (*
++  val tok_natural : char list -> sexpr * char list
++  val digit: char list-> char * char list
++  val digits : char list -> char list * char list
++  val tok_dot : char list -> char * char list
++  val tok_float : char list -> sexpr * char list
++  val tok_fraction : char list -> sexpr * char list
++  val tok_string : char list -> sexpr * char list 
++  val tok_symbolCharNoDot: char list -> char *char list
++  val tok_symbol_char: char list -> char  * char list
++  val tok_symbol: char list -> sexpr * char list
++  val tok_bool : char list -> sexpr * char list
++  val tok_allParsers: char list -> sexpr * char list
++  val tok_list: char list -> sexpr list * char list
++  val tok_number: char list -> sexpr * char list
++  val tok_NC_return: char list -> sexpr * char list
++  val tok_NC_newline: char list -> sexpr * char list
++  val tok_NC_nul: char list -> sexpr * char list
++  val tok_NC_page: char list -> sexpr * char list
++  val tok_NC_space: char list -> sexpr * char list
++  val tok_NC_tab: char list -> sexpr * char list
++  val tok_VC: char list -> sexpr * char list
++  val tok_quoted: char list -> sexpr * char list
++  val tok_QQuote: char list -> sexpr * char list
++  val tok_unquoted: char list -> sexpr * char list
++  val tok_unqSpliced: char list -> sexpr * char list
++  val tok_Y: char list -> sexpr * char list
++  val tok_list: char list -> sexpr * char list
++  val tok_line_comment: char list -> ((char * char list) * char) * char list
++  val tok_dottedList: char list -> sexpr * char list
++  val tok_rec_comment: char list -> sexpr * char list
++  val tok_comment_prefix: char list -> (char * char) * char list
++  val bigParser: char list -> sexpr * char list
++ *)
+ end
+ = struct
+ let normalize_scheme_symbol str =
+@@ -40,7 +75,242 @@ let normalize_scheme_symbol str =
+ 	s) then str
+   else Printf.sprintf "|%s|" str;;
+ 
++(* our code*)
+ 
+-let read_sexprs string = raise X_not_yet_implemented;;
++(*------------- Range parsers*)
++let nt_whitespaces = star (char ' ');;
++
++let digit = range '0' '9';;
++let digits= plus (range '0' '9');;
++let lowercase_letters = range 'a' 'z';;
++let uppercase_letters = range 'A' 'Z';;
++let visible_simple_char = range (Char.chr 33) (Char.chr 127);;
++let hidden_char = range (Char.chr 0) (Char.chr 32);;
++
++(* Parsers left, middle and right, but returns only the middle (usually used with whitespaces on the sides) *)
++let make_paired nt_left nt_right nt =
++  let nt = caten nt_left nt in
++  let nt = pack nt (function (_, e) -> e) in
++  let nt = caten nt nt_right in
++  let nt = pack nt (function (e, _) -> e) in
++    nt;;
++  
++let make_spaced nt = make_paired nt_whitespaces nt_whitespaces nt;;
++
++(*------------------ Specific Char parsers*)
++let tok_lparen = char '(';;
++let tok_rparen = char ')';;
++
++let tok_dot = char '.';;
++
++let tok_quasi_quote = char '`';;
++let tok_unquote = char ',';;
++let tok_quote = char (Char.chr 39);;
++let tok_double_quote = char (Char.chr 34);;
++
++let tok_num_sign = char '#';;
++let tok_dollar = char '$';;
++let tok_exc_mark = char '!';;
++let tok_star = char '*';;
++let tok_minus = char '-';;
++let tok_plus = char '+';;
++let tok_under_score = char '_';;
++let tok_equal = char '=';;
++let tok_exp = char '^';;
++let tok_less_than = char '<';;
++let tok_bigger_than = char '>';;
++let tok_question_mark = char '?';;
++let tok_slash = char '/';;
++let tok_colon = char ':';;
++let tok_semi_colon = char ';';;
++
++let tok_space = char ' ';;
++
++let tok_tab = char (Char.chr 9);;
++let tok_backslash = char (Char.chr 92);;
++let tok_formfeed = char (Char.chr 12);; (*\f*)
++let tok_carriage_return = char (Char.chr 13);;
++let tok_linefeed = char (Char.chr 10);;
++
++(*------------------ Char parsers (returns SExpr versions) *)
++let tok_charPrefix = caten (word "#") (word "\\") ;;
++
++let tok_NC_newline = 
++  let p = caten tok_charPrefix (word_ci "newline") in
++      pack p (fun _-> Char(Char.chr 10)) ;;
++
++let tok_NC_nul = 
++  let p = caten tok_charPrefix (word_ci "nul") in
++      pack p (fun _-> Char(Char.chr 0)) ;;
++
++let tok_NC_page = 
++  let p = caten tok_charPrefix (word_ci "page") in
++      pack p (fun _-> Char(Char.chr 12)) ;;
++
++let tok_NC_nul = 
++  let p = caten tok_charPrefix (word_ci "nul") in
++      pack p (fun _-> Char(Char.chr 0)) ;;
++
++let tok_NC_return = 
++  let p = caten tok_charPrefix (word_ci "return") in
++      pack p (fun _-> Char(Char.chr 13)) ;;
++
++let tok_NC_space = 
++  let p = caten tok_charPrefix (word_ci "space") in
++      pack p (fun _-> Char(Char.chr 32)) ;;
++
++let tok_NC_tab = 
++  let p = caten tok_charPrefix (word_ci "tab") in
++      pack p (fun _-> Char(Char.chr 9)) ;;
++
++let tok_VC = 
++  let p = caten tok_charPrefix visible_simple_char in
++  pack p (fun ((ns,bs),c) -> Char(c));;
++
++(*------------------ Boolean Parsers*)
++(* Disjoint parser for Boolean expressions (case insensitive) *)
++let tok_true = (caten tok_num_sign (char_ci 't'));;
++let tok_false =  (caten tok_num_sign (char_ci 'f'));;
++let tok_bool= 
++  let boolval=(disj tok_true tok_false ) in
++    pack boolval (fun ( (car,cdr)) -> if ( cdr == 't'|| cdr=='T') then Bool(true) else Bool(false));;
++
++(*------------------ Numbers Parsers*)
++(* parsers a natural number, doesn't consider +/- signs *)
++let tok_natural =
++  pack digits (fun (ds) -> Number (Fraction ((int_of_string (list_to_string ds)),1)));;
++
++(* float parser is about to parse a left digits from the dot and the dot and finally the right side and to concat them*)
++let tok_float = let parse = caten (caten digits  tok_dot) digits  in
++  pack parse (fun ((num1,dot),num2) -> Number(Float (float_of_string (list_to_string(num1 @ [dot] @ num2)))));;
++
++(* converts a char list consisting of digits into an int (used for tok_fraction) *)
++let lst_to_num (ls: char list) = int_of_string (list_to_string ls);;
++
++(* simple Greatest-Common-Diviser algorithm, excludes zeroes*)
++let rec gcd x y =
++  if y = 0 then x else gcd y (x mod y);; 
++
++(* Parses fractions with the form Digits Dot Digits, seperates every component into a char list and converts it after *)
++let tok_fraction = 
++  let p = caten (caten digits tok_slash) digits in
++    pack p (fun ((num1,slash),num2) ->  Number (Fraction (((lst_to_num num1)/(gcd (lst_to_num num1) (lst_to_num num2)))
++    ,((lst_to_num num2)/(gcd (lst_to_num num1) (lst_to_num num2))))));;
++
++(* Parses Natural/Fraction/Float with signs +/- (returns SExpr) *)
++let tok_number =
++  let sign = disj tok_minus tok_plus in
++  let tmp = disj_list [tok_fraction; tok_float; tok_natural;] in
++    let final = caten (maybe sign) tmp in
++      pack final (fun ((s: char option),n) -> match s with 
++      | Some(s) -> (if s='-' then 
++        (match n with 
++        | Number(Float f1) -> Number(Float(f1*.(-1.0)))
++        | Number(Fraction(n1,d1)) -> Number(Fraction(n1*(-1),d1))
++        | _ -> Number(Float(1.0))) (* This line hides the exhaustive types warning, NOT REACHED ON VALID INPUT! *)
++        else n)
++      | _ -> n );;
++
++(* parsers a float/natural and case_insensitive 'e' and another natural *)
++let tok_scientific = 
++  let p = caten (caten (disj tok_number tok_float) (char_ci 'e')) tok_number in
++  pack p (fun ((num1,c),num2) -> 
++    match num1, num2 with 
++    | Number(Fraction (n1, d1)), Number(Fraction (n2, d2)) -> (
++        let x = float_of_int(n1) in
++        let y = float_of_int(n2) in
++        Number(Float(x**y)))
++    | Number(Float(f1)), Number(Fraction(n2,d2)) -> (
++        let x = float_of_int(n2) in
++        Number(Float(f1**x))
++      )
++    | _ -> Number(Float(0.0))   (*NOT reached*)
++  );;
++
++(*------------------- Symbol/String Parsers *)
++(* A disjoin list of SymbolCharNoDot tokens parsers *)
++let tok_symbolCharNoDot = 
++  disj_list [digit;lowercase_letters;uppercase_letters
++    ;tok_exc_mark;tok_dollar;tok_exp;tok_star;tok_minus;tok_under_score;tok_equal;tok_plus
++      ;tok_less_than;tok_bigger_than;tok_question_mark;tok_slash;tok_colon] ;;
++
++(* Parses symbols, a single DOT or SymbolCharNoDot+ *)
++let tok_symbol_char = disj tok_symbolCharNoDot tok_dot ;;
++let tok_symbol = 
++  let pase = (plus tok_symbol_char) in
++    pack pase (fun (car) -> if ((List.length car) = 1 && (List.nth car 0) = '.') then  raise X_no_match else Symbol(list_to_string car));;
++
++(*a praser to string is just to check that all characters is not double qoute and left is double qoute and the right side *)
++let tok_string = 
++  let toString = caten (caten tok_double_quote (star (const (fun ch2 -> ch2!='\\' && '"'!= ch2))) ) tok_double_quote in 
++    pack toString (fun ((doubleQuote,st),doubleQuote2) ->  String(list_to_string (st))) ;;
+   
++(* between the start and the end of the comment we allow every character in the ascii table to appear*)
++let tok_line_comment = caten (caten tok_semi_colon (star (disj tok_symbol_char (char ' ')))) tok_linefeed;;
++
++
++(*------Merge quotes/lists parsers with others because the former two can be nested------*)
++(*------------------start of all parsers------------------------------------------------------------*)
++let rec tok_allParsers (tokens:char list) =  disj_list [tok_bool; tok_string; tok_number; tok_scientific; tok_symbol; tok_list; 
++  tok_dottedList; tok_quoted; tok_QQuote; tok_unquoted; tok_unqSpliced; tok_NC_newline; tok_NC_nul; tok_NC_page; tok_NC_space; tok_NC_tab; tok_VC; ] tokens
++
++and tok_Y (tokens:char list)  = 
++  let tmp = pack tok_line_comment (fun ((c1,lst),c2) -> c1) in
++    let dsj = disj tok_space tmp in
++      let starDsj = star dsj in
++        make_paired starDsj starDsj tok_allParsers tokens
++
++and tok_list (tokens:char list) = 
++  let lp = caten tok_lparen nt_whitespaces in 
++    let rp = caten nt_whitespaces tok_rparen in
++      let myParse = caten lp (star tok_Y) in
++        let parsedList = caten myParse rp in
++            pack parsedList (fun (((a , b) , distenation) , (c , d)) -> List.fold_right (fun element acc-> Pair(element ,acc)) distenation Nil) 
++            tokens
++
++and tok_dottedList (tokens:char list) = 
++  let left = caten tok_lparen (plus tok_Y) in
++    let middle = caten left (make_spaced tok_dot) in
++      let right = caten (caten middle tok_Y) tok_rparen in  
++        pack right (fun ((((lp,leftList),dot),rightElement),rp) ->List.fold_right (fun element acc -> Pair(element,acc)) leftList rightElement ) 
++          tokens
++          
++and tok_quoted (tokens :char list ) = 
++  let p = caten tok_quote tok_allParsers in
++  pack p (fun (quote,sexp) -> Pair((Symbol("quote"),Pair(sexp,Nil))))
++    tokens
++
++and tok_QQuote (tokens :char list ) = 
++  let p = caten tok_quasi_quote tok_allParsers in 
++  pack p (fun (qq,s) -> Pair(Symbol("quasiquote"),Pair(s,Nil))) tokens
++
++and tok_unquoted (tokens :char list ) = 
++  let p = caten tok_unquote tok_allParsers in 
++  pack p (fun (un,s) -> Pair(Symbol("unquote"),Pair(s,Nil))) tokens
++
++and tok_unqSpliced (tokens :char list ) = 
++  let p = caten (caten tok_unquote (char (Char.chr 64))) tok_allParsers in
++  pack p (fun ((unq,at),s) -> Pair(Symbol("unquote-splicing"),Pair(s,Nil))) tokens ;;
++
++(*---------------end of alll parsers---------------------------------------------------------------*)
++
++let tok_comment_prefix = caten tok_num_sign tok_semi_colon;;
++
++let rec tok_rec_comment (tokens: char list) = 
++  let ((solmet1,semi1),tkns) = (tok_comment_prefix tokens) in
++  let (spaces,remain1) =  nt_whitespaces tkns in
++  try let ((sol,semi),s) = (tok_comment_prefix remain1) in
++    let x,m = (tok_rec_comment ([sol]@[semi]@s)) in
++     ((make_spaced tok_allParsers) m)
++    with X_no_match -> ((make_spaced tok_allParsers) remain1);;
++
++(* -------- line-comments & sexpr-comments & whitespaces are thrown away --------*)
++let bigParser = 
++  let tmp = pack tok_line_comment (fun ((c1,lst),c2) -> c1) in
++    let tmp2 = pack tok_rec_comment (fun (s) -> ' ') in
++      let dsj = disj_list [tok_space; tmp; tmp2;] in
++        let starDsj = star dsj in
++          make_paired starDsj starDsj tok_allParsers;; 
++
++let read_sexprs string = ((fun (sl,r) -> sl) ((star bigParser) (string_to_list string)));;
+ end;; (* struct Reader *)
+diff --git a/readme.txt b/readme.txt
+index e69de29..50bf905 100644
+--- a/readme.txt
++++ b/readme.txt
+@@ -0,0 +1,4 @@
++Hanna Hayik 207442054
++Einas Ashkar 207061102
++
++I (We) assert that the work we submitted is 100% our own. We have not received anypart from any other student in the class, nor have we give parts of it for use to others.Nor have we used code from other sources: Courses taught previously at this university,courses taught at other universities, various bits of code found on the Internet, etc.We realize that should our code be found to contain code from other sources, that aformal case shall be opened against us withva’adat mishma’at, in pursuit of disciplinaryaction
+diff --git a/semantic-analyser.ml b/semantic-analyser.ml
+index 8e684f0..f7ec8b3 100644
+--- a/semantic-analyser.ml
++++ b/semantic-analyser.ml
+@@ -59,22 +59,527 @@ let rec expr'_eq e1 e2 =
+   | _ -> false;;	
+                       
+ exception X_syntax_error;;
+-
++(*FuNcTiOnAl CoDe Is BeAuTiFuL, Is FaStEr, Is ReAdBlE, OK LOOOOOL*)
+ module type SEMANTICS = sig
+   val run_semantics : expr -> expr'
+   val annotate_lexical_addresses : expr -> expr'
+   val annotate_tail_calls : expr' -> expr'
+   val box_set : expr' -> expr'
++  (*val check_if_Vparam: 'a list list -> 'a -> int list
++  val remove_last_expr: 'a list -> int -> int -> 'a list
++  val nested_params_list : expr' -> int -> int -> string list -> string list list list
++  val nested_get_set_list: expr' -> int -> int -> string list -> int -> int -> int -> bool -> string list -> string list list list
++  val order_lambdas_list: string list list list -> string list list list list
++  val lambda_history: string list list -> string list list list list -> string list list
++  val nested_sequences: expr' -> int -> int -> int list -> int list list list
++  val sequence_history: string list list -> int list list list -> int list list
++  val index_in_sequences : 'a -> 'a list -> int
++  val check_if_box_single: string list list -> string list list -> string list list list list -> int list list list -> string list list list -> bool
++  val check_if_box: string list list list -> string list list list -> string list list list list -> int list list list -> string list list list -> bool
++  val list_needs_boxing : expr' -> string list list list list list
++  val box_all:   expr' -> int -> int -> string list -> string list list list -> string list list list -> expr'
++  val order_lambdas_list: string list list list -> string list list list list
++  val new_lambdas: string list list list list list -> string list list list list -> string list list list 
++  val need_change : 'a list -> 'a list list list -> 'a list list
++  val divide_by_variable: string list list list list -> string list list list -> string list list list -> string list list list list list
++  val read_list: string list list list -> string list list list
++  val write_list: string list list list -> string list list list
++  val sameVariable: string list list -> string list list -> string list list list list -> bool
++  val collect_connected_get_list:  string list list list -> string list list -> string list list list list -> string list list list
++  val remove_connected_get: string list list list -> string list list -> string list list list list -> string list list list
++  val remove_connected_set: string list list list -> string list list -> string list list list list -> string list list list
++  val collect_connected_set_list: string list list list -> string list list -> string list list list list -> string list list list
++
++  val sequence_history: string list list -> int list list list -> int list list
++  val index_in_sequences: 'a -> 'a list -> int
++  val is_same_sequence: 'a list list -> 'a list list -> bool
++  val is_related_seq: 'a list -> 'a list -> bool
++  val is_seq_direct: string list list -> bool*)
+ end;;
+ 
+ module Semantics : SEMANTICS = struct
+ 
+-let annotate_lexical_addresses e = raise X_not_yet_implemented;;
++(*our code starts here AND IT NEVER ENDS...*)
++(*returns first element in lst*)
++let first_ele lst = (List.nth lst 0);;
++
++(*returns index of first occurence of element in lst*)
++let rec find_idx element lst =
++  match lst with
++  | [] -> -1
++  | e :: s -> if e = element then 0 else 1 + (find_idx element s);;
++
++(*returns the index of first unempty list in lst, if doesn't exist returns (List.length lst)*)
++let rec find_first_unempty_lst lst = 
++  match lst with 
++  | [] -> 0
++  | e::s -> if e = [] then 1 + (find_first_unempty_lst s) else 0 ;;
++
++(*returns appropriate variable indexes to whether Free/Bound/Param*)
++let check_if_Vparam lst variab =
++  let len = (List.length lst) in
++  let indexes_lists = (List.map (fun vars_list -> if (List.mem variab vars_list) = true then [(find_idx variab vars_list);] else []) (List.rev lst)) in
++  let index_of_first_appearence = (find_first_unempty_lst indexes_lists) in
++  if index_of_first_appearence == len then [] else (
++    if index_of_first_appearence = 0 then (first_ele indexes_lists) else
++      [index_of_first_appearence-1; (first_ele (List.nth indexes_lists index_of_first_appearence))]
++  );;
++
++(*returns proper Var expr' according to location length*)
++let variab_dispatch variab location = 
++  match location with 
++      | [] -> Var'(VarFree(variab))
++      | [n] -> Var'(VarParam(variab, n))
++      | [n; m] -> Var'(VarBound(variab, n, m))
++      | _ -> Var'(VarFree("ERROR IN variab_dispatch"));;
++
++(*annotate lexical addresses in recursive manners*)
++let rec lex_addressing lst e = 
++  match e with 
++  | Var(exp) -> (variab_dispatch exp (check_if_Vparam lst exp))
++  | Const(exp) -> Const'(exp)
++  | If(s, dit, dif) -> If'((lex_addressing lst s), (lex_addressing lst dit), (lex_addressing lst dif))
++  | Seq(ls) -> Seq'((List.map (fun ex -> (lex_addressing lst ex)) ls))
++  | Or(ls) -> Or'((List.map (fun ex -> (lex_addressing lst ex)) ls))
++  | Set(v, e) -> Set'((set_def_var v lst), (lex_addressing lst e))
++  | Def(v, e) -> Def'((set_def_var v lst), (lex_addressing lst e))
++  | Applic(rator, rands) -> Applic'((lex_addressing lst rator), (List.map (fun ex -> (lex_addressing lst ex)) rands))
++  | LambdaSimple(vars_list, body) -> LambdaSimple'(vars_list, (lex_addressing (lst@[vars_list]) body))
++  | LambdaOpt(vars_list, opt, body) -> LambdaOpt'(vars_list, opt, (lex_addressing (lst@[(vars_list@[opt])]) body)) 
++
++(*special variables dispatcher for Set! & Define statements*)
++and set_def_var v lst = 
++  match v with 
++  | Var(x) -> (
++      let res = (variab_dispatch x (check_if_Vparam lst x)) in
++      match res with 
++      | Var'(VarFree(x)) -> VarFree(x)
++      | Var'(VarParam(variab, n)) -> VarParam(variab, n)
++      | Var'(VarBound(variab, n, m)) -> VarBound(variab, n, m)
++      | _ -> VarFree("ERROR IN set_def_var")
++  )
++  | _ -> VarFree("ERROR IN set_def_var");;
++
++(*Removes last expression from list, Easier way would've been using List.rev List.tl*)
++let rec remove_last_expr expr_list n length =
++  if n = (length - 1) then [] else [(List.nth expr_list n)] @ (remove_last_expr expr_list (n+1) length) ;;
++
++(*annotates tail calls*)
++let rec annotate_tail_call expr isTailPos =
++  match expr with 
++  | If'(test, dit,dif) -> If'(test,(annotate_tail_call dit isTailPos), (annotate_tail_call dif isTailPos))
++  | LambdaSimple'(var_list, body) -> LambdaSimple'(var_list, (annotate_tail_call body true))
++  | LambdaOpt'(vars, opt, body) -> LambdaOpt'(vars, opt, (annotate_tail_call body true))
++  | Set'(variab, body) -> Set'(variab, (annotate_tail_call body false))
++  | Var'(x) -> Var'(x)
++  | Const'(x) -> Const'(x)
++  | Applic'(rator, rands) -> if isTailPos = true then ApplicTP'((annotate_tail_call rator false), (List.map (fun exp -> (annotate_tail_call exp false)) rands))
++      else Applic'((annotate_tail_call rator false), (List.map (fun exp -> (annotate_tail_call exp false)) rands))
++  | Seq'(expr_list) ->  if isTailPos = false then Seq'((List.map (fun exp -> (annotate_tail_call exp false)) expr_list)) 
++      else (
++        let length = (List.length expr_list ) in 
++        let lastElement = (List.nth expr_list (length-1)) in
++        let list_no_last = (remove_last_expr expr_list 0 length) in
++        let tmp = (List.map (fun exp -> (annotate_tail_call exp false)) list_no_last) in
++          Seq'(tmp @ [(annotate_tail_call lastElement true)]))
++  | Or'(expr_list) ->  if isTailPos = false then Or'((List.map (fun exp -> (annotate_tail_call exp false)) expr_list)) 
++      else (
++        let length = (List.length expr_list ) in 
++        let lastElement = (List.nth expr_list (length-1)) in
++        let list_no_last = (remove_last_expr expr_list 0 length) in
++        let tmp = (List.map (fun exp -> (annotate_tail_call exp false)) list_no_last) in
++          Or'(tmp @ [(annotate_tail_call lastElement true)]))
++  | Def'(variab, exp) -> Def'(variab, (annotate_tail_call exp false))
++  | _ -> expr;;
++
++(*here starts the part for BOXING: we gonna define a list that contains 3 lists which will be our main item to work with
++  [[level; index;] [get/set, varName, major, minor] [major, minor, index, isDirect]] the first list is lambda's ID
++  the second contains variable info and get/set string and the last item is the sequence ID and info
++  TIP IF YOU GOING TO READ MY CODE: DONT READ IT LOL!*)
++
++(*Takes Lambda info from GET/SET command, meaning no lambda's father info in there only lambda's ID*)
++let is_same_lambda first second = 
++  if ((List.nth first 0) = (List.nth second 0)) then (
++    if ((List.nth first 1) = (List.nth second 1)) then true else false
++  ) else false;;
++
++(*Helping functions to simplify code*)
++let lambda_minor list = (int_of_string (List.nth (List.nth list 1) 1));;
++let father_major list = (int_of_string (List.nth (List.nth list 0) 0));;
++let var_father_major list = (int_of_string (List.nth (List.nth list 1) 2));;
++let get_var_info list = (List.nth list 1);;
++let get_lambda_info list = (List.nth list 0);;
++
++(*receives 1 or 0 as string returns true if bit="1", meaning its a direct element in a Sequence*)
++let check_direct bit = if bit = true then (string_of_int 1) else (string_of_int 0) ;;
++
++(*Mark each lambda with a unique ID with 2 keys and add the father of that lambda [father, [level, index]], hence father 
++  also is a list with two indexes, all lists contain strings only*)
++let rec nested_params_list exp (level: int) (index: int) (father: string list)= 
++  match exp with 
++  | Var'(exp) -> []
++  | Const'(exp) -> []
++  | If'(s, dit, dif) -> (nested_params_list s level index father)@(nested_params_list dit level (index+1) father)@(nested_params_list dif level (index+2) father)
++  | Seq'(ls) -> (List.flatten (List.mapi (fun idx e -> (nested_params_list e level (idx+index) father)) ls))
++  | Or'(ls) -> (List.flatten (List.mapi (fun idx e -> (nested_params_list e level (idx+index) father)) ls))
++  | Set'(v, e) -> (nested_params_list e level index father)
++  | Def'(v, e) -> (nested_params_list e level index father)
++  | Applic'(rator, rands) -> (nested_params_list rator level index father)@(List.flatten (List.mapi (fun idx e -> (nested_params_list e level (idx+index+1) father)) rands))
++  | ApplicTP'(rator, rands) -> (nested_params_list rator level index father)@(List.flatten (List.mapi (fun idx e -> (nested_params_list e level (idx+index+1) father)) rands))
++  | LambdaSimple'(vars_list, body) ->(
++    let me = [(string_of_int level); (string_of_int index);] in
++    [[father; me; vars_list]]@(nested_params_list body (level+1) 0 me))
++  | LambdaOpt'(vars_list, opt, body) ->(
++    let me = [(string_of_int level); (string_of_int index);] in
++    [[father; me; vars_list@[opt]]]@(nested_params_list body (level+1) 0 me))
++  | _ -> raise X_syntax_error;;
++
++(*Mark each Sequence with a unique ID with its father like lambdas but here the lists contain integers 
++  u must be saying WHAT THE FUCK IS HE THINKING?! while reading my code, i said the same thing to myself
++  while writing it*)
++let rec nested_sequences exp seqMajor seqMinor seqFather =
++  match exp with 
++  | Var'(exp) ->  []
++  | Const'(exp) -> []
++  | If'(s, dit, dif) -> (nested_sequences s seqMajor seqMinor seqFather)@(nested_sequences dit seqMajor (seqMinor+1) seqFather)@(nested_sequences dif seqMajor (seqMinor+2) seqFather)
++  | Seq'(ls) -> [[seqFather; [seqMajor; seqMinor]]]@(List.flatten (List.mapi (fun idx e -> (nested_sequences e (seqMajor+1) idx [seqMajor; seqMinor])) ls))
++  | Or'(ls) -> (List.flatten (List.mapi (fun idx e -> (nested_sequences e seqMajor (idx+seqMinor) seqFather)) ls))
++  | Set'(VarBound(exp, minor, major), e) -> (nested_sequences e seqMajor seqMinor seqFather)
++  | Set'(VarParam(exp, minor), e) -> (nested_sequences e seqMajor seqMinor seqFather)
++  | Set'(VarFree(exp), e) -> (nested_sequences e seqMajor seqMinor seqFather)
++  | Def'(v, e) -> (nested_sequences e seqMajor seqMinor seqFather)
++  | Applic'(rator, rands) -> (List.flatten (List.mapi (fun idx e -> (nested_sequences e seqMajor (idx+seqMinor) seqFather)) ([rator;]@rands)))
++  | ApplicTP'(rator, rands) -> (List.flatten (List.mapi (fun idx e -> (nested_sequences e seqMajor (idx+seqMinor) seqFather)) ([rator;]@rands)))
++  | LambdaSimple'(vars_list, body) -> (nested_sequences body seqMajor seqMinor seqFather)
++  | LambdaOpt'(vars_list, opt, body) -> (nested_sequences body seqMajor seqMinor seqFather)
++  | _ -> raise X_syntax_error;;
++
++(*collects GET/SET commands with lambda and sequence fathers info, index in sequence and if its a direct element in sequence, its param or bound
++  every command gets a structure like this: [father; ["get/set", varName, varMajor, varMinor], [seqMinor,seqMajor,index,SeqDirect]]*)
++let rec nested_get_set_list exp level index lambdaFather seqMajor seqMin index_in_seq seqDirect (seqFather: string list) =
++  let me = [(string_of_int seqMajor); (string_of_int seqMin);] in
++  match exp with 
++  | Var'(VarBound(exp, major, minor)) -> [[lambdaFather; ["get"; exp; (string_of_int major); (string_of_int minor);]; seqFather@[(string_of_int index_in_seq); (check_direct seqDirect);]]]
++  | Var'(VarParam(exp, minor)) -> [[lambdaFather; ["get"; exp; (string_of_int minor);]; seqFather@[(string_of_int index_in_seq); (check_direct seqDirect);]]]
++  | Var'(VarFree(exp)) -> []
++  | Const'(exp) -> []
++  | If'(s, dit, dif) -> (nested_get_set_list s level index lambdaFather seqMajor seqMin index_in_seq false seqFather)@(nested_get_set_list dit level (index+1) lambdaFather seqMajor (seqMin+1) index_in_seq false seqFather)@(nested_get_set_list dif level (index+2) lambdaFather seqMajor (seqMin+2) index_in_seq false seqFather)
++  | Seq'(ls) -> (List.flatten (List.mapi (fun idx e -> (nested_get_set_list e level (idx+index) lambdaFather (seqMajor+1) idx idx true me)) ls))
++  | Or'(ls) -> (List.flatten (List.mapi (fun idx e -> (nested_get_set_list e level (idx+index) lambdaFather seqMajor idx index_in_seq false seqFather)) ls))
++  | Set'(VarBound(exp, major, minor), e) -> [[lambdaFather; ["set"; exp; (string_of_int major); (string_of_int minor);]; seqFather@[(string_of_int index_in_seq); (check_direct seqDirect);]]]@(nested_get_set_list e level index lambdaFather seqMajor seqMin index_in_seq false seqFather)
++  | Set'(VarParam(exp, minor), e) -> [[lambdaFather; ["set"; exp; (string_of_int minor);]; seqFather@[(string_of_int index_in_seq); (check_direct seqDirect);]]]@(nested_get_set_list e level index lambdaFather seqMajor seqMin index_in_seq false seqFather)
++  | Set'(VarFree(exp), e) -> (nested_get_set_list e level index lambdaFather seqMajor seqMin index_in_seq false seqFather)
++  | Def'(v, e) -> (nested_get_set_list e level index lambdaFather seqMajor seqMin index_in_seq false seqFather) 
++  | Applic'(rator, rands) -> (nested_get_set_list rator level index lambdaFather seqMajor seqMin index_in_seq false seqFather)@
++      (List.flatten (List.mapi (fun idx e -> (nested_get_set_list e level (idx+index+1) lambdaFather seqMajor (idx+seqMin+1) index_in_seq false seqFather)) rands))
++  | ApplicTP'(rator, rands) -> (nested_get_set_list rator level index lambdaFather seqMajor seqMin index_in_seq false seqFather)@
++      (List.flatten (List.mapi (fun idx e -> (nested_get_set_list e level (idx+index+1) lambdaFather seqMajor (idx+seqMin+1) index_in_seq false seqFather)) rands))
++  | LambdaSimple'(vars_list, body) -> (nested_get_set_list body (level+1) 0 [(string_of_int level); (string_of_int index);] seqMajor seqMin index_in_seq false seqFather)
++  | LambdaOpt'(vars_list, opt, body) -> (nested_get_set_list body (level+1) 0 [(string_of_int level); (string_of_int index);] seqMajor seqMin index_in_seq false seqFather)
++  | _ -> raise X_syntax_error;;
++
++(*finds maximum number within lambdas levels, receives lambdasList -1 0 lengthOfLambdasList*)
++let rec biggest_num list maximum n length = 
++  if n = length then maximum else (
++    let tmp = (int_of_string (List.nth (List.nth (List.nth list n) 1) 0)) in
++    if tmp > maximum then (biggest_num list tmp (n+1) length) else (biggest_num list maximum (n+1) length)
++  );;
++
++(*makes n empty lists in a list, Kind of array init but functional*)
++let rec make_empty_lists n =
++  if n=0 then [] else [[]]@(make_empty_lists (n-1));;
++
++(*have no fkin idea what it does, its a part of order_lambdas_list*)
++let fill_lambdas_list originalList n =
++  (List.map (fun ls -> if (int_of_string (List.nth (List.nth ls 1) 0)) = n then ls else []) originalList);;
++
++(*removes empty lists from list and returns acc, starts with n=0 acc=[] *)
++let rec remove_empty_lists list acc n  = 
++  let length = (List.length list) in
++  if n = length then acc else (
++    if (List.nth list n) != [] then (remove_empty_lists list (acc@[(List.nth list n);]) (n+1))
++    else (remove_empty_lists list acc (n+1))
++  );;
++(*order the unordered lambdas list according to levels, so we can search faster, like somebody cares about runtime*)
++let order_lambdas_list unordered_lambdas_list = 
++  if unordered_lambdas_list=[] then [] else (
++    let num_of_lists = (biggest_num unordered_lambdas_list (-1) 0 (List.length unordered_lambdas_list)) in
++    let ordered_empty_lists = (make_empty_lists (num_of_lists+1)) in
++      (List.mapi (fun idx ls -> ls@(remove_empty_lists (fill_lambdas_list unordered_lambdas_list idx) [] 0)) ordered_empty_lists));;
++
++(*used with write_list to seperate GET/SET commands*)
++let read_list list = 
++  (List.filter (fun ls -> if (List.nth (List.nth ls 1) 0) = "get" then true else false) list);;
++
++let write_list list = 
++  (List.filter (fun ls -> if (List.nth (List.nth ls 1) 0) = "set" then true else false) list);;
++
++(*takes a lambda info [level, index] with the ordered lambdas_list and how far we wanna reach from toFind and returns the proper ancestor*)
++let rec find_lambda toFind lambdas_list boundLevels = 
++  if boundLevels = 0 then toFind else (
++    let majorIdx = (int_of_string (List.nth toFind 0)) in
++    let minorIdx = (int_of_string (List.nth toFind 1)) in
++    let found = (List.nth (List.filter (fun elem -> if ((lambda_minor elem) = minorIdx) then true else false) (List.nth lambdas_list majorIdx)) 0) in
++      (find_lambda (List.nth found 0) lambdas_list (boundLevels-1))
++  );;
++
++(*returns true if the two GET/SET commands contain the same variable, We do by comparing lambdas histories, var names*)
++let sameVariable firstGetSet secondGetSet lambdas_list = 
++  let isFirstParam = (if (List.length (get_var_info firstGetSet))=3 then true else false) in
++  let isSecondParam = (if (List.length (get_var_info secondGetSet))=3 then true else false) in
++  let firstLambda = (if isFirstParam=true then (get_lambda_info firstGetSet)
++    else (find_lambda (get_lambda_info firstGetSet) lambdas_list ((var_father_major firstGetSet)+1))) in
++  let secondLambda = (if isSecondParam=true then (get_lambda_info secondGetSet)
++    else (find_lambda (get_lambda_info secondGetSet) lambdas_list ((var_father_major secondGetSet)+1))) in
++    (if ((List.nth (get_var_info firstGetSet) 1)=(List.nth (get_var_info secondGetSet) 1)) && ((is_same_lambda firstLambda secondLambda)) then true else false);;
++
++(*four functions used to delete/collect all related GET/SET to the item which itself is a GET/SET command
++  we use them to seperate every GET/SET of variable x alone so we can check if it needs boxing 
++  without being mixed with other variables GET/SET commands*)
++let remove_connected_get get_list item lambdas_list =
++  (List.filter (fun e -> if (sameVariable item e lambdas_list) = true then false else true) get_list);;
+ 
+-let annotate_tail_calls e = raise X_not_yet_implemented;;
++let remove_connected_set set_list item lambdas_list =
++  (List.filter (fun e -> if (sameVariable item e lambdas_list) = true then false else true) set_list);;
+ 
+-let box_set e = raise X_not_yet_implemented;;
++let collect_connected_get_list getList item lambdas_list = 
++  (List.filter (fun elem -> (sameVariable item elem lambdas_list)) getList);;
+ 
++let collect_connected_set_list setList item lambdas_list = 
++  (List.filter (fun elem -> if (sameVariable item elem lambdas_list) = true then true else false) setList);; 
++
++(*helper function for the function below it, returns history of father lambdas up to BOUNDS level*)
++let rec bounded_lambda_history lambdas_list start bounds =
++  if bounds!=0 then (
++    let newGuy = (find_lambda start lambdas_list 1) in
++      [newGuy]@(bounded_lambda_history lambdas_list newGuy (bounds-1))
++  ) else [];;
++
++(*returns the history of a lambda containing a var to track the main lambda that has that var as a parameter*)
++let lambda_history get_set_command lambdas_list = 
++  let param_or_not = (if (List.length (List.nth get_set_command 1)) = 3 then true else false) in
++    if param_or_not then [(List.nth get_set_command 0)] else (
++      let bound_level = ((int_of_string (List.nth (List.nth get_set_command 1) 2))+1) in
++      let startLambda = (List.nth get_set_command 0) in
++      (List.rev ([startLambda]@(bounded_lambda_history lambdas_list startLambda bound_level)))
++    );;
++
++(*these names just get weirder as you go further, returns Sequences history from START*)
++let rec recursive_sequence_history start all_sequences =
++  if (List.nth start 0) = -1 then [] else (
++    let major = (List.nth start 0) in
++    let minor = (List.nth start 1) in
++    let ancestor = (List.nth (List.filter (fun e -> if ((List.nth (List.nth e 1) 0)=major) && ((List.nth (List.nth e 1) 1)=minor) then true else false) all_sequences) 0) in
++    [start]@(recursive_sequence_history (List.nth ancestor 0) all_sequences)
++  );;
++
++(*damn my bad, this one returns the history, the one above should be private and not used*)
++let sequence_history get_set_command all_sequences =
++  let sMajor = (int_of_string (List.nth (List.nth get_set_command 2) 0)) in
++  let sMinor = (int_of_string (List.nth (List.nth get_set_command 2) 1)) in
++    (List.rev (recursive_sequence_history [sMajor; sMinor] all_sequences));;
++
++(*our damn traversal is Pre-Order to the three main lists Seq_list lambdas_list get_set_list so with
++  the index of the command in the main list we can determine if criterion1 or 2 is true*)
++let index_in_sequences get_set_command get_set_lists = 
++  let tmp = (List.mapi (fun idx elem -> if elem = get_set_command then idx else -1) get_set_lists) in
++    (List.nth (List.filter (fun e -> if e = (-1) then false else true) tmp) 0);;
++
++(*returns TRUE if one of the sequences is the ancestor to the other
++  who is your daddy?*)
++let is_related_seq first second = 
++  let shorter = (if (List.length first) > (List.length second) then second else first) in
++  let longer = (if (List.length first) > (List.length second) then first else second) in
++  let all_1_if_equal = (List.mapi (fun idx seq -> if (seq=(List.nth longer idx)) then 1 else 0) shorter) in
++  let tmp = (List.filter (fun e -> if e=1 then false else true) all_1_if_equal) in 
++    (if tmp=[] then true else false);;
++
++(*fancy name for comparing [a,b,x,x]=[c,d,x,x] but seriously just compare 0 and 1 indexes dont go out of bounds*)
++let is_same_sequence first second = 
++  if ((List.nth (List.nth first 2) 0)=(List.nth (List.nth second 2) 0)) && ((List.nth (List.nth first 2) 1)=(List.nth (List.nth second 2) 1)) then true else false;;
++
++(*checks the fourth element in the sequence info [father; getInfo; seqInfo]*)
++let is_seq_direct command = 
++  if (int_of_string (List.nth (List.nth command 2) 3))=1 then true else false;;
++
++(*checks the main boxing condition through lambdas history checking*)
++let box_if_lambdas_match first_history second_history = 
++  if (first_history = second_history) then false else (
++    let shorter = (if (List.length first_history) > (List.length second_history) then second_history else first_history) in 
++    let longer = (if (List.length first_history) > (List.length second_history) then first_history else second_history) in 
++    let mapped = (List.mapi (fun idx e -> (if (List.nth longer idx)=e then 1 else 0)) shorter) in
++    let filtered = (List.filter (fun e -> if e=1 then true else false) mapped) in
++      (if ((List.length filtered) = 1) then true else false)
++  );;
++
++(*the heart of our algorithm, the engine of the car, the core of our RBMK reactor which is gonna blow like Chernobyl,
++  given a get+set commands with lambdas lists, sequences lists, get+set lists, the main 3 lists ofcourse, The Elders,
++  we can check if the variable these two commands contain, needs boxing and return true ofc, criterion1 and 2 are considered too*)
++let check_if_box_single get_command set_command lambdas_list seqs_list get_set_lists = 
++  let get_lambda_history = (lambda_history get_command lambdas_list) in
++  let set_lambda_history = (lambda_history set_command lambdas_list) in
++  let get_seq_history = (sequence_history get_command seqs_list) in 
++  let set_seq_history = (sequence_history set_command seqs_list) in
++  let index_of_get = (index_in_sequences get_command get_set_lists) in
++  let index_of_set = (index_in_sequences set_command get_set_lists) in
++  let is_same_seq = (is_same_sequence get_command set_command) in
++  let get_is_direct = (is_seq_direct get_command) in
++  let set_is_direct = (is_seq_direct set_command) in
++  let is_related = (is_related_seq get_seq_history set_seq_history) in
++  let criterion1 = (if (is_same_seq) then ((set_is_direct=true) && (get_is_direct=false) && (index_of_set<index_of_get)) else (
++    if (is_related) then ((set_is_direct=true) && (index_of_set>index_of_get)) else false)) in 
++  let criterion2 = (if (is_same_seq) then ((get_is_direct=true) && (set_is_direct=false) && (index_of_get<index_of_set)) else (
++    if (is_related) then ((get_is_direct=true) && (index_of_get>index_of_set)) else false)) in
++    (if (criterion1 || criterion2) then false else (
++      (if ((box_if_lambdas_match get_lambda_history set_lambda_history) = true) then true else false)
++    ));;
++
++(*given two lists which contain get/set commands for the same var, we check if it needs boxing
++  by comparing every Get to every Set, Why not box everything ? SHIT*)
++let check_if_box get_list set_list lambdas_list seqs_list get_set_lists =
++  if (((List.length get_list)=0) || ((List.length set_list)=0)) then false 
++  else (
++    let damn = (List.map (fun e1 -> (List.map (fun e2 -> (if ((check_if_box_single e1 e2 lambdas_list seqs_list get_set_lists)=true) then 1 else 0)) get_list)) set_list) in
++    let damn_filtered = (List.filter (fun e -> if e=1 then true else false) (List.flatten damn)) in
++      (if (List.length damn_filtered) > 0 then true else false) 
++  );;
++
++(*divide the get_list and set_list by same VARIABLE, not the same name we are not dumb asses, it checks lambdas histories to confirm same variable
++  returns a list that every item in it a list containing two lists one for get commands and one for set commands*)
++let rec divide_by_variable lambdas_list get_list set_list = 
++  if (((List.length get_list) = 0) || (((List.length set_list) = 0))) then [] else (
++    let item = (List.hd get_list) in
++    let variab_lists = [[(collect_connected_get_list get_list item lambdas_list); (collect_connected_set_list set_list item lambdas_list)]] in
++    let remove_gets = (remove_connected_get get_list item lambdas_list) in
++    let remove_sets = (remove_connected_set set_list item lambdas_list) in
++    variab_lists@(divide_by_variable lambdas_list remove_gets remove_sets)
++  );;
++
++(*Nice, finally some high look on things, dont mind the number of arguments the things inside take its fugly,
++  explained by var: first we create unique ID and order the lambdas, second create get_set_lists with sequences info,
++  third create sequences list just like the lambdas one, 4 5 seperate get set commands, 6 divide the commands like we said in the function before
++  last but not fkin least, keep the ones who needs boxing*)
++let list_needs_boxing exp = 
++  let lambdas_list = (order_lambdas_list (nested_params_list exp 0 0 [(string_of_int (-1)); (string_of_int (-1));])) in
++  let get_set_lists = (nested_get_set_list exp 0 0 [(string_of_int (-1)); (string_of_int (-1));] 0 0 0 false [(string_of_int (-1)); (string_of_int (-1));]) in
++  let seqs_list = (nested_sequences exp 0 0 [(-1); (-1)]) in
++  let get_list = (read_list get_set_lists) in
++  let set_list = (write_list get_set_lists) in
++  let vars_lists = (divide_by_variable lambdas_list get_list set_list) in
++  let seperated_lists = (List.filter (fun elem -> 
++      (if ((check_if_box (List.nth elem 0) (List.nth elem 1) lambdas_list seqs_list get_set_lists) = true) then true else false)) vars_lists) in
++    seperated_lists;;
++
++(*create lists that contain [lambdaID, get/setcommand] so we can later add Set! command to these lambdas like the assignment wants*)
++let new_lambdas boxed_lists lambdas_list = 
++  (List.map (fun lst -> (
++    let varInfo = (List.nth (List.nth lst 0) 0) in
++    let lambda_info = (List.nth varInfo 0) in
++    let get_proc = (List.nth varInfo 1) in
++    let bound_true = (if ((List.length get_proc) = 3) then false else true) in
++      (if (bound_true) then [(find_lambda lambda_info lambdas_list ((int_of_string (List.nth get_proc 2))+1)); get_proc] else [lambda_info; get_proc;])
++  )) boxed_lists);;
++
++(*if the lambda's body we adding to is Seq then append to it, else create Seq bcz its a single exp*)
++let seq_or_single exp body = 
++  match body with 
++  | Seq'(ls) -> Seq'(exp@ls)
++  | _ -> (if exp=[] then body else Seq'(exp@[body]));;
++
++(*I swear this ain't worth the 1 point im getting for this assignment
++  a lambda uses this function to find the Set! command it has to add to its body*)
++let need_change me lambdas_to_change = 
++  let meMajor = (List.nth me 0) in
++  let meMinor = (List.nth me 1) in
++  let tmp = (List.map (fun e -> (if ((List.nth (List.nth e 0) 0) = meMajor) && ((List.nth (List.nth e 0) 1) = meMinor) then (List.nth e 1) else [])) lambdas_to_change) in
++    (remove_empty_lists tmp [] 0);;
++
++(*santua clau's little helper, for VarParam or VarBound returns minor index in both ways*)
++let helper list =
++  if (List.length list) = 3 then (List.nth list 2) else (List.nth list 3);;
++
++(*yea the tests we too dumb to differ in params order so i sorted the lists*)
++let sort_by_index list = 
++  (List.sort (fun a b -> 
++    match a, b with 
++    | Set'(VarParam(exp1, m1), e1), Set'(VarParam(exp2, m2), e2) -> m1-m2
++    | _ -> raise X_syntax_error
++    ) list);;
++
++(*convert the strings that represent the Set! we need to add to actual Set! commands to simplfy things down there, down there is the function below 
++  not other places....*)
++let string_to_set list = 
++  if (List.flatten list) = [] then [] else (
++    (sort_by_index (List.map (fun e -> Set'(VarParam((List.nth e 1), (int_of_string (helper e))), Box'(VarParam((List.nth e 1), (int_of_string (helper e)))))) list)));;
++
++(*Well, The name says it all, box everything aah ? nah we not stupid, box_all isnt the full name
++  actually box_all_the_commands_that_need_boxing_in_exp is the right name, replace every get for boxget
++  every set for boxset, and every lambda through the unique ID and all the acrobatic shit we did above
++  can directly add any Set! commands needed to its body with minimal work*)
++let rec box_all exp (level: int) (index: int) (father: string list) lists_to_box lambdas_to_change = 
++  match exp with 
++  | Var'(VarBound(exp, major, minor)) -> (
++      let info = [father; ["get"; exp; (string_of_int major); (string_of_int minor);]] in
++      (if ((if_needs_boxing info lists_to_box) = true) then BoxGet'(VarBound(exp, major, minor)) else Var'(VarBound(exp, major, minor))))
++  | Var'(VarParam(exp, minor)) -> (
++    let info = [father; ["get"; exp; (string_of_int minor)]] in
++      (if ((if_needs_boxing info lists_to_box) = true) then BoxGet'(VarParam(exp, minor)) else Var'(VarParam(exp, minor))))
++  | Var'(VarFree(exp)) -> Var'(VarFree(exp))
++  | Const'(exp) -> Const'(exp)
++  | If'(s, dit, dif) -> If'((box_all s level index father lists_to_box lambdas_to_change),
++      (box_all dit level (index+1) father lists_to_box lambdas_to_change), (box_all dif level (index+2) father lists_to_box lambdas_to_change))
++  | Seq'(ls) -> Seq'(List.mapi (fun idx e -> (box_all e level (idx+index) father lists_to_box lambdas_to_change)) ls)
++  | Or'(ls) -> Or'(List.mapi (fun idx e -> (box_all e level (idx+index) father lists_to_box lambdas_to_change)) ls)
++  | Set'(VarBound(exp, major, minor), e) -> (
++      let info = [father; ["set"; exp; (string_of_int major); (string_of_int minor);]] in
++        (if ((if_needs_boxing info lists_to_box) = true ) then BoxSet'(VarBound(exp, major, minor), (box_all e level index father lists_to_box lambdas_to_change)) else 
++          Set'((VarBound(exp, major, minor)), (box_all e level index father lists_to_box lambdas_to_change))))
++  | Set'(VarParam(exp, minor), e) -> (
++    let info = [father; ["set"; exp; (string_of_int minor);]] in
++      (if ((if_needs_boxing info lists_to_box) = true) then BoxSet'(VarParam(exp, minor), (box_all e level index father lists_to_box lambdas_to_change)) else
++        Set'(VarParam(exp, minor), (box_all e level index father lists_to_box lambdas_to_change))))
++  | Set'(VarFree(exp), e) -> Set'(VarFree(exp), (box_all e level index father lists_to_box lambdas_to_change))
++  | Def'(v, e) -> Def'(v, (box_all e level index father lists_to_box lambdas_to_change))
++  | Applic'(rator, rands) -> (
++      let mapped = (List.mapi (fun idx e -> (box_all e level (idx+index) father lists_to_box lambdas_to_change)) ([rator;]@rands)) in
++        Applic'((List.nth mapped 0) , (List.tl mapped)))
++  | ApplicTP'(rator, rands) -> (
++      let mapped = (List.mapi (fun idx e -> (box_all e level (idx+index) father lists_to_box lambdas_to_change)) ([rator;]@rands)) in
++      ApplicTP'((List.nth mapped 0) , (List.tl mapped)))
++  | LambdaSimple'(vars_list, body) -> (
++      let me = [(string_of_int level); (string_of_int index);] in 
++      let newCommand = (string_to_set (need_change me lambdas_to_change)) in
++      LambdaSimple'(vars_list, (seq_or_single newCommand (box_all body (level+1) 0 me lists_to_box lambdas_to_change))))
++  | LambdaOpt'(vars_list, opt, body) -> (
++    let me = [(string_of_int level); (string_of_int index);] in 
++    let newCommand = (string_to_set (need_change me lambdas_to_change)) in
++    LambdaOpt'(vars_list, opt, (seq_or_single newCommand (box_all body (level+1) 0 me lists_to_box lambdas_to_change))))
++  | _ -> raise X_syntax_error
++
++(*checks if this variable, not get, not set, but checks if the damn variable appears as in need of boxing
++  so even if we miss a command we need to change, one command for every variable is enough to box everything
++  related to that variable, Actually if u've read the code u would know thats what we did, we only took one command
++  for every variable we needed to box, why take all ? fkin memory waste *)
++and if_needs_boxing varInfo lists_to_box =
++  let tmp = (List.filter (fun e -> if (((List.nth e 0) = (List.nth varInfo 0)) && ((List.nth e 1) = (List.nth varInfo 1))) then true else false) lists_to_box) in
++    if ((List.length tmp) > 0) then true else false;;
++
++let annotate_lexical_addresses e = (lex_addressing [] e);;
++
++let annotate_tail_calls e = annotate_tail_call e false;;
++
++(*build lambdas IDs and the list of commands that needs boxing, we flatten them too and i have no clue
++  why i did that but its working so cool, build the new closures call it new lambdas if u prefer and at last
++  run box_all to get the final expression
++  ah flattened bcz box_all dont care about the damn order, from there on its just a matter of the list containing 
++  a specific variable or not, we showed before we only need lambdas to confirm same variable, name isn't enough*)
++let box_set e = 
++  let lambdas = (order_lambdas_list (nested_params_list e 0 0 [(string_of_int (-1)); (string_of_int (-1));])) in
++  let lists = (list_needs_boxing e) in
++  let flattened = (List.flatten (List.flatten lists)) in
++  let new_closures = (new_lambdas lists lambdas) in
++    (box_all e 0 0 [(string_of_int (-1)); (string_of_int (-1))] flattened new_closures);;
++  
+ let run_semantics expr =
+   box_set
+     (annotate_tail_calls
+@@ -82,4 +587,3 @@ let run_semantics expr =
+   
+ end;; (* struct Semantics *)
+ 
+-
+diff --git a/tag-parser.ml b/tag-parser.ml
+index 138249e..6fdab78 100644
+--- a/tag-parser.ml
++++ b/tag-parser.ml
+@@ -1,5 +1,5 @@
+ #use "reader.ml";;
+-
++open Reader ;;
+ type constant =
+   | Sexpr of sexpr
+   | Void
+@@ -46,6 +46,10 @@ exception X_syntax_error;;
+ 
+ module type TAG_PARSER = sig
+   val tag_parse_expressions : sexpr list -> expr list
++  (*val sexpr_tag : sexpr -> expr
++  val seq_combine: expr -> expr list
++  val pairs_split: sexpr -> expr list
++  val let_bindings_split: sexpr -> expr list list*)
+ end;; (* signature TAG_PARSER *)
+ 
+ module Tag_Parser : TAG_PARSER = struct
+@@ -58,8 +62,243 @@ let reserved_word_list =
+ 
+ (* work on the tag parser starts here *)
+ 
+-let tag_parse_expressions sexpr = raise X_not_yet_implemented;;
++(*flattens lambdas arguments as Sexprs and keeps Nil to differ imporper/proper lists*)
++let rec flatten_sexprs args =
++  match args with
++  | Nil -> [Nil]
++  | Pair(Symbol(x), Symbol(y)) -> [String(x); String(y);]
++  | Pair(Symbol(x),cdr) -> String(x) ::(flatten_sexprs cdr)
++  | _ -> [] ;;
++
++(*flattens arguments as strings, removes Nil*)
++let rec flatten_strings args =
++  match args with 
++  | Nil -> []
++  | Symbol(x) -> [x]
++  | Pair(Symbol(x), cdr) -> x :: (flatten_strings cdr)
++  | _ -> [] ;;
++    
++(*removes last element from arguments list (Nil/Dotted List)*)
++let rec remove_last arg =
++  match arg with
++  | Pair(Symbol(x),Symbol(y)) -> [x]
++  | Pair(Symbol(car),cdr) -> car :: remove_last cdr
++  | Symbol(x) -> [x]
++  | _ -> [] ;;
++
++(*breaks nested sequences*)
++let rec seq_combine tagArg = 
++  match tagArg with
++  | Seq(tmp) -> tmp
++  | _ -> [tagArg] ;;
++
++(*empty list defined for quasiquotes expansions*)
++let empty_list = [Const(Sexpr(Nil))];;
++
++(*takes binding [var,val], returns var as string*)
++let list_var_collector (lst: expr list) = 
++  let t = (List.nth lst 0) in
++  match t with 
++  | Var(x) -> x
++  | _ -> "ERROR IN FUNCTION: list_var_collector" ;;   (*NOT REACHED*)
++
++(* breaks argument into string from Sexpr*)
++let var_string_collector param =
++  match param with 
++  | String(param) -> param 
++  | _ -> ""
++
++(*collects vals from binding*)
++let list_valuea_collector (lst: expr list) = (List.nth lst 1);; 
++
++(*tags one sexpr at a time*)
++let rec sexpr_tag tagArg =
++  match tagArg with
++  (*Basic syntax tagged as Constants*) 
++  | Number(Float(f1)) -> Const(Sexpr(Number(Float(f1))))
++  | Number(Fraction(n1,d1)) -> Const(Sexpr(Number(Fraction(n1,d1))))
++  | Bool(b1) -> Const(Sexpr(Bool(b1)))
++  | Char (ch) -> Const(Sexpr(Char(ch)))
++  | String(str) -> Const(Sexpr(String(str)))
++  (*checks if variable's name is a reserved word*)
++  | Symbol(tagArg)  -> (if (List.mem tagArg reserved_word_list) == true then raise X_syntax_error else
++      Var(tagArg))
++  | Nil -> Const(Void)
++  | Pair(Symbol("if"), Pair(test, Pair(dit, Pair(dif, Nil)))) -> If(sexpr_tag test, sexpr_tag dit, sexpr_tag dif)
++  | Pair(Symbol("if"), Pair(test, Pair(dit ,Nil))) -> If(sexpr_tag test, sexpr_tag dit, Const(Void))
++  (*1st LSimple with no args, 2nd is LVariadic, 3rd is LOptional/LSimple according to the arguments list type dotted or not*)  
++  | Pair(Symbol("lambda"), Pair(vars,exp)) -> (
++      match vars with 
++      | Nil -> LambdaSimple([], (nested_to_seq exp))
++      | Symbol(vs) -> ( let tmp = (nested_to_seq exp) in
++          LambdaOpt([], vs, tmp))
++      | _ -> (
++        let var_params = (flatten_sexprs vars) in
++        let string_params = (List.map var_string_collector var_params) in 
++        let index_of_last = (List.length var_params)-1 in
++        let last = (List.nth var_params index_of_last) in
++        let last_string = (List.nth string_params index_of_last) in
++        let tmp2 = (nested_to_seq exp) in
++          if last = Nil then LambdaSimple((remove_last vars), tmp2)
++            else LambdaOpt((remove_last vars), last_string, tmp2))
++    )
++  | Pair(Symbol("or"), cdr) -> Or((pairs_split cdr))
++  (*Define-MIT style*)
++  | Pair(Symbol("define"), Pair(Pair(var,argList),exprPlus)) -> Def((sexpr_tag var),LambdaSimple((flatten_strings argList),(nested_to_seq exprPlus)))
++  | Pair(Symbol("define"), Pair(variab, Pair(va, n))) -> Def((sexpr_tag variab), (sexpr_tag va))
++  | Pair(Symbol("set!"), Pair(variab, Pair(va, n))) -> Set((sexpr_tag variab), (sexpr_tag va))
++  (*Empty Sequence*)
++  | Pair(Symbol("begin"), Nil) -> Const(Void)
++  (*Single-elemented sequence*)
++  | Pair(Symbol("begin"), Pair(car, Nil)) -> (sexpr_tag car)
++  (*multi-exps sequence*)
++  | Pair(Symbol("begin"), Pair(car, cdr)) -> (
++      let tmp = (pairs_split (Pair(car, cdr))) in
++       Seq((List.fold_right (fun element acc -> element@acc) (List.map seq_combine tmp) [])))
++  (*base cases for quasiquote*)
++  | Pair(Symbol("quasiquote"), Pair(Pair(Symbol("unquote"), Pair(a, Nil)), Nil)) -> Const(Sexpr(a))
++  | Pair(Symbol("quasiquote"), Pair(Pair(Symbol("unquote-splicing"), Pair(Symbol(a), Nil)), Nil)) -> raise X_syntax_error
++  (*interesting case for quasiquote*)
++  | Pair(Symbol("quasiquote"),rest) ->  (List.nth (quotes_pairs_split rest) 0)
++  (*quote means Const*)
++  | Pair(Symbol("quote"), Pair(sexp, Nil)) -> Const(Sexpr(sexp))
++  (*tag the sexps, organize binds, build App with proper Lambda and args*)
++  | Pair(Symbol("let"), Pair(car, cdr)) -> (
++      let exps = (nested_to_seq cdr) in
++      let bindings_pairs = (let_bindings_split car) in
++        if car == Nil then Applic(LambdaSimple([], exps), []) else (
++          Applic(LambdaSimple((List.map list_var_collector bindings_pairs), exps), (List.map list_valuea_collector bindings_pairs))
++        )
++    )
++  (*tag sexps, split binds, build Set expressions and drop all in one App*)
++  | Pair(Symbol("letrec"), Pair(car, cdr)) -> (
++      let exps = (pairs_split cdr) in
++      let bindings_pairs = (let_bindings_split car) in
++      let set_exps = (List.map (fun lst -> Set((List.nth lst 0), (List.nth lst 1))) bindings_pairs) in
++      Applic(LambdaSimple((List.map list_var_collector bindings_pairs), Seq(set_exps@exps)), (List.map (fun exp -> Const(Sexpr(Symbol("whatever")))) set_exps))
++    )
++  | Pair(Symbol("let*"), Pair(car, cdr)) -> ( let binds = (let_bindings_split car) in
++    (let_asterisk binds (List.map list_valuea_collector binds) (nested_to_seq cdr)))
++  | Pair(Symbol("pset!"), cdr) -> (
++      let bind_list = (let_bindings_split cdr) in
++      let vars_list = (List.map (fun bind -> (List.nth bind 0)) bind_list) in
++      let vals_list = (List.map list_valuea_collector bind_list) in
++        (pset_tag vars_list vals_list)
++    )
++  | Pair(Symbol("cond"), ribs) -> (cond_rib_tag ribs)
++  | Pair(Symbol("and"), args) -> (and_tag args)
++
++  | Pair(Symbol(x), Pair(car, cdr)) -> Applic((sexpr_tag (Symbol(x))), [(sexpr_tag car)]@(pairs_split cdr))
++  | Pair(car,Nil) -> Applic((sexpr_tag car) ,[])
++  | Pair(car, cdr) -> Applic((List.nth (pairs_split car) 0), (pairs_split cdr))
++
++(*our expansion for pset!, we use a var with a reserved name which is 100% hygenic*)
++and pset_tag vars vals = 
++    if (List.length vars) == 1 then Applic(LambdaSimple([], Set((List.nth vars 0), (List.nth vals 0))),[])
++    else Applic(LambdaSimple(["pset!"], Set((List.nth vars 0), Seq([(pset_tag (List.tl vars) (List.tl vals)); Var("pset!")]))), [(List.nth vals 0)])
++
++(*split let letrec let-asterisk pset bindings*)
++and let_bindings_split tagArg = 
++  match tagArg with 
++  | Pair(Symbol(x), Pair(car, cdr)) -> [(sexpr_tag (Symbol(x))); (sexpr_tag car)]::(let_bindings_split cdr)
++  | Pair(car, cdr) -> (let_bindings_split car)@(let_bindings_split cdr)
++  | _ -> []
++
++(*build let-asterisk expansion, every recursive cuts a var/val from the list*)
++and let_asterisk bind_lst vals_lst exps = 
++  let len = (List.length bind_lst) in
++    if len == 0 then Applic(LambdaSimple([],exps), []) else (
++      if len == 1 then Applic(LambdaSimple((List.map list_var_collector bind_lst), exps), vals_lst) else (
++        let head_bind = (List.nth bind_lst 0) in
++        let tail_binds = (List.tl bind_lst) in
++        Applic(LambdaSimple([(list_var_collector head_bind)], (let_asterisk tail_binds (List.tl vals_lst) exps)), [(List.nth vals_lst 0)])
++      )
++    )
++
++(*quasiquote expansions, a shit storm*)
++and quotes_pairs_split tagArg = 
++  match tagArg with 
++  | Pair(Symbol("unquote"), Pair(Symbol(x), rest)) -> [Applic(Var("cons"), [Var(x);]@(quotes_pairs_split rest))]
++  (*Dotted List Situations,     Example in order (4 cases): (c ,a . ,b) / (,a . ,b) / (c ,a . ,@b) / (,a . ,@b)*)
++  | Pair(Pair(Symbol("unquote"), Pair(Symbol(x), Nil)), Pair(Symbol("unquote"), Pair(Symbol(y), Nil))) -> [Applic(Var("cons"), [Var(x); Var(y);])]
++  | Pair(Pair(Pair(Symbol("unquote"), Pair(Symbol(x), Nil)) , Pair(Symbol("unquote"), Pair(Symbol(y), Nil))), Nil) -> [Applic(Var("cons"), [Var(x); Var(y);])]
++  | Pair(Pair(Symbol("unquote"), Pair(Symbol(x), Nil)), Pair(Symbol("unquote-splicing"), Pair(Symbol(y), Nil))) -> [Applic(Var("cons"), [Var(x); Var(y);])]
++  | Pair(Pair(Pair(Symbol("unquote"), Pair(Symbol(x), Nil)) , Pair(Symbol("unquote-splicing"), Pair(Symbol(y), Nil))), Nil) -> [Applic(Var("cons"), [Var(x); Var(y);])]
++  (* cases like : (a . ,b) or (a . ,@b)*)
++  | Pair(Pair(Symbol(x), Pair(Symbol("unquote-splicing"), Pair(Symbol(y), Nil))), Nil) -> [Applic(Var("cons"), [Const(Sexpr(Symbol(x))); Var(y)])]
++  | Pair(Pair(Symbol(x), Pair(Symbol("unquote"), Pair(Symbol(y), Nil))), Nil) -> [Applic(Var("cons"), [Const(Sexpr(Symbol(x))); Var(y)])]
++
++  | Pair(Pair(Pair(Symbol("unquote"), Pair(Symbol(x), Nil)) , rest2), Nil) -> [Applic(Var("cons"), [Var(x);]@(quotes_pairs_split rest2))]
++  | Pair(Pair(Symbol("unquote"), Pair(Symbol(x), Nil)), rest) -> [Applic(Var("cons"), [Var(x);]@(quotes_pairs_split rest))]
++
++  | Pair(Symbol("unquote-splicing"), Pair(Symbol(x), rest)) -> [Applic(Var("append"), [Var(x);]@(quotes_pairs_split rest))]
++  (*Dotted List Cases*)
++  | Pair(Pair(Symbol("unquote-splicing"), Pair(Symbol(x), Nil)), Pair(Symbol("unquote"), Pair(Symbol(y), Nil))) -> [Applic(Var("append"), [Var(x); Var(y);])]
++  | Pair(Pair(Pair(Symbol("unquote-splicing"), Pair(Symbol(x), Nil)) , Pair(Symbol("unquote"), Pair(Symbol(y), Nil))), Nil) -> [Applic(Var("append"), [Var(x); Var(y);])]
++  | Pair(Pair(Symbol("unquote-splicing"), Pair(Symbol(x), Nil)), Pair(Symbol("unquote-splicing"), Pair(Symbol(y), Nil))) -> [Applic(Var("append"), [Var(x); Var(y);])]
++  | Pair(Pair(Pair(Symbol("unquote-splicing"), Pair(Symbol(x), Nil)) , Pair(Symbol("unquote-splicing"), Pair(Symbol(y), Nil))), Nil) -> [Applic(Var("append"), [Var(x); Var(y);])]
++
++  | Pair(Pair(Pair(Symbol("unquote-splicing"), Pair(Symbol(x), Nil)) , rest2), Nil) -> [Applic(Var("append"), [Var(x);]@(quotes_pairs_split rest2))]
++  | Pair(Pair(Symbol("unquote-splicing"), Pair(Symbol(x), Nil)), rest) -> [Applic(Var("append"), [Var(x);]@(quotes_pairs_split rest))]
++  (*No-Quotes cases & General cases*)
++  | Pair(Symbol(x), Nil) -> [Applic(Var("cons"), [Const(Sexpr(Symbol(x)));]@empty_list)]
++  | Pair(Symbol(x), rest) -> [Applic(Var("cons"), [Const(Sexpr(Symbol(x)));]@(quotes_pairs_split rest))]
++  | Pair(car, Nil) -> (quotes_pairs_split car)
++  | Pair(car, cdr) -> [Applic(Var("cons"), (quotes_pairs_split car)@(quotes_pairs_split cdr))]
++  | Nil -> empty_list
++  (*Eliminate exhaustive matching pattern warning & handles everything other than symbols/pairs*)
++  | x -> [Const(Sexpr(x));]
++
++(*break any pair and tag it accordingly*)
++and pairs_split tagArg = 
++  match tagArg with 
++  | Pair(x,Nil) -> [(sexpr_tag x);]
++  | Pair(x, y) -> [(sexpr_tag x)]@(pairs_split y)
++  | Nil -> []
++  | x -> [(sexpr_tag x);]
++
++(*returns a Seq or one expression according to tagged list length*)
++and nested_to_seq tagArg = 
++  let lst = (pairs_split tagArg) in
++  let len = (List.length lst) in
++  if len == 1 then (List.nth lst 0)
++  else (if len==0 then Const(Void) else (Seq(lst)))
++
++(*expand cond ribs as seen in class's material*)
++and cond_rib_tag tagArg =
++  match tagArg with
++| Pair(Pair(test,Pair(Symbol("=>"),Pair(ok,Nil))),rest) -> (
++  let valur_of_test = (sexpr_tag test) in
++  let vale_of_f = LambdaSimple ([], (nested_to_seq ok)) in
++  let vale_of_rest = (cond_rib_tag rest) in
++  let lambda_of_rest = LambdaSimple([], vale_of_rest) in
++  let bindings2 = ["value"; "f";] in
++  let bindings = ["value"; "f"; "rest"] in
++  let expr_list =[ valur_of_test;vale_of_f;lambda_of_rest ] in
++  let expr_list2 =[ valur_of_test;vale_of_f;] in
++  if vale_of_rest = (Const(Void)) then Applic(LambdaSimple(bindings2, If(Var("value"), Applic(Applic(Var("f"), []), [Var("value")]), Const(Void))), expr_list2)
++  else Applic(LambdaSimple (bindings,If (Var ("value"), Applic (Applic (Var "f", []), [Var "value"]),Applic (Var "rest", []))), expr_list)
++  )
++| Pair(Pair(Symbol("else"), exprs),rest) -> (nested_to_seq exprs)
++| Pair(Pair(test,then_to_do ),ribs) -> 
++    let then_list = (pairs_split then_to_do) in
++      if((List.length then_list )== 1) 
++        then 
++          If((sexpr_tag test), (List.nth (pairs_split then_to_do) 0), (cond_rib_tag ribs))
++        else
++          If((sexpr_tag test), Seq(pairs_split then_to_do), (cond_rib_tag ribs))
++| _ -> (sexpr_tag tagArg)
++
++(*build And expansions*)
++and and_tag tagArg = 
++match tagArg with 
++| Nil -> Const(Sexpr(Bool(true)))
++| Pair(last,Nil) -> (and_tag last)
++| Pair(car,cdr) -> If((and_tag car), (and_tag cdr), Const(Sexpr(Bool(false))))
++| _ -> (sexpr_tag tagArg);;
++
++(*just map over the sexpr list with function sexpr_tag and BAMMM ur done*)
++let tag_parse_expressions sexpr = (List.map sexpr_tag sexpr);;
+ 
+-  
+ end;; (* struct Tag_Parser *)
+ 

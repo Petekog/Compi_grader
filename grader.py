@@ -1,7 +1,6 @@
 import re
 import zipfile
 import os
-import git
 from shutil import rmtree
 from shutil import copytree
 import csv
@@ -48,6 +47,8 @@ def test_one_case(input_file):
         proc = subprocess.run(["ocaml", "-stdin"], cwd=compiler_dir, input=test_string, encoding="ascii", stdout=PIPE,
                               stderr=PIPE,
                               timeout=test_timeout_global)
+        if proc.returncode != 0:
+            print(proc.stderr)
 
         output = proc.stdout
     except subprocess.CalledProcessError as e:
@@ -143,7 +144,7 @@ def read_cases_points():
     cases_num = 0
     for row in list(rows)[:-1]:
         title = row[0]
-        tests = row[1].split("/")
+        tests = row[1].split(",")
         points = int(row[2])
 
         sum1 += points
@@ -153,7 +154,7 @@ def read_cases_points():
         temp_cases = {case:(cases_grade,title) for case in tests}
         global_cases_points_dict.update(temp_cases)
 
-    print("There are {} cases , that sums up to {} points".format(cases_num,sum))
+    print("There are {} cases , that sums up to {} points".format(cases_num,sum1))
 def grade(patch_file_path):
     sub_grade = 0
     notes = ""

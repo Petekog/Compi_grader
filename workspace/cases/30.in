@@ -1,0 +1,2 @@
+LambdaSimple (["x"; "y"],
+ Or [Applic (Var "f", [Applic (Var "g", [Var "x"])]); Var "y"])
