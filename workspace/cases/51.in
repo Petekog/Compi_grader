@@ -1,8 +1,0 @@
-Def (Var "test",
- LambdaSimple (["x"; "y"; "z"],
-  Applic (Var "list",
-   [LambdaSimple ([],
-     Applic (Var "list",
-      [LambdaSimple (["x"], Set (Var "x", Var "z"));
-       LambdaSimple ([], Set (Var "x", Var "z")); Var "x"]));
-    LambdaSimple (["y"], Set (Var "x", Var "y"))])))

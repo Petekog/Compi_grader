@@ -1,3 +1,0 @@
-LambdaSimple (["x"; "y"; "z"; "w"],
-  If (Applic (Var "foo?", [Var "x"]), Applic (Var "goo", [Var "y"]),
-   Applic (Var "boo", [Applic (Var "doo", [Var "z"])])))

@@ -1,6 +1,0 @@
-LambdaOpt (["x"; "y"], "z",
- Applic (Var "+",
-  [Var "x"; Var "y";
-   LambdaSimple (["z"],
-    Applic (Var "+",
-     [Var "z"; LambdaSimple (["z"], Applic (Var "+", [Var "z"; Var "y"]))]))]))

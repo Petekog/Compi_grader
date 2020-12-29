@@ -1,8 +1,0 @@
-If (Applic (LambdaSimple (["y"], Var "x"), []),
-  Applic
-   (LambdaSimple (["x"],
-     Seq
-      [Set (Var "x", Var "y");
-       LambdaSimple ([], Set (Var "x", Const (Sexpr (Number (Int 1)))))]),
-   [Const (Sexpr (Symbol "a"))]),
-  LambdaSimple (["x"], Set (Var "x", Var "y")))

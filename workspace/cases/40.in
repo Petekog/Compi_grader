@@ -1,7 +1,0 @@
-LambdaSimple (["x"; "y"; "z"],
- Applic (Var "+",
-  [Var "x"; Var "y";
-   LambdaSimple (["z"],
-    Applic (Var "+",
-     [Var "z";
-      LambdaSimple (["x"], Applic (Var "+", [Var "x"; Var "y"; Var "z"]))]))]))

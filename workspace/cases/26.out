@@ -1,5 +1,0 @@
-
-LambdaSimple' (["x"; "y"; "z"; "w"],
- If' (Applic' (Var' (VarFree "even?"), [Var' (VarParam ("x", 0))]),
-  ApplicTP' (Var' (VarParam ("y", 1)), [Var' (VarParam ("w", 3))]),
-  ApplicTP' (Var' (VarParam ("z", 2)), [Var' (VarParam ("w", 3))])))

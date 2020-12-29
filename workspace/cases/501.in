@@ -1,3 +1,0 @@
-Def (Var "test",
- LambdaOpt (["x"], "y",
-  Applic (Var "cons", [Var "x"; LambdaSimple ([], Set (Var "x", Var "y")); LambdaSimple ([], Seq' [Set (Var "y", Var "x"); Var "y"])])))

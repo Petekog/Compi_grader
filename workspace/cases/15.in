@@ -1,4 +1,0 @@
-LambdaOpt ([], "x",
-  Seq
-   [LambdaSimple (["x"], Set (Var "x", Const (Sexpr (Number (Fraction (1, 1))))));
-    Applic (Var "car", [Var "x"])])

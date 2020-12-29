@@ -1,7 +1,0 @@
-LambdaSimple (["x"; "y"; "z"],
- If (Applic (Var "f?", [Var "x"]), Applic (Var "g", [Var "y"]),
-  If (Applic (Var "g?", [Var "x"]),
-   Seq [Applic (Var "f", [Var "x"]); Applic (Var "f", [Var "y"])],
-   Seq
-    [Applic (Var "h", [Var "x"]); Applic (Var "f", [Var "y"]);
-     Applic (Var "g", [Applic (Var "f", [Var "x"])])])))

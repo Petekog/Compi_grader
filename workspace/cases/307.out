@@ -1,1 +1,0 @@
-LambdaSimple' (["x"], Seq' ([Set' (Var' (VarParam ("x", 0)), Box' (VarParam ("x", 0)));BoxSet' (VarParam ("x", 0), Applic' (LambdaSimple' ([], BoxGet' (VarBound ("x", 0, 0))), []))]))

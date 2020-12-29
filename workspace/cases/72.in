@@ -1,5 +1,0 @@
-LambdaSimple (["x"],
-  LambdaOpt (["x"], "y",
-   If (Applic (Var "x", [Var ">"; Const (Sexpr (Number (Int 5)))]),
-    LambdaSimple (["x"], Applic (Var "a", [Var "x"])),
-    LambdaSimple (["x"], Applic (Var "c", [Var "x"])))))

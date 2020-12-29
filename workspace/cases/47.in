@@ -1,7 +1,0 @@
-Def (Var "test",
- LambdaSimple (["x"; "y"],
-  Applic (Var "list",
-   [LambdaSimple ([],
-     Set (Var "x",
-      Applic (Var "+", [Var "x"; Const (Sexpr (Number (Fraction(1, 1)))])));
-    LambdaSimple ([], Var "y")])))

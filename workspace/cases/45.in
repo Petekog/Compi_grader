@@ -1,3 +1,0 @@
-Def (Var "test",
- LambdaSimple (["x"; "y"],
-  Set (Var "x", Applic (Var "*", [Var "x"; Var "y"]))))

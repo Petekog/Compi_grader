@@ -1,1 +1,0 @@
-LambdaSimple' ([], If' (Var' (VarFree "x"), ApplicTP' (Var' (VarFree "x"), []), ApplicTP' (Var' (VarFree "not"), [Var' (VarFree "x")])))

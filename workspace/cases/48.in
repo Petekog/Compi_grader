@@ -1,7 +1,0 @@
-Def (Var "test",
- LambdaSimple (["x"],
-  LambdaSimple (["op"],
-   If (Applic (Var "eq?", [Var "op"; Const (Sexpr (Symbol "read"))]),
-    LambdaSimple ([], Var "x"),
-    If (Applic (Var "eq?", [Var "op"; Const (Sexpr (Symbol "write"))]),
-     LambdaSimple (["val"], Set (Var "x", Var "val")), Const Void)))))

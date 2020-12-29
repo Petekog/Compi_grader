@@ -1,8 +1,0 @@
-LambdaSimple (["x"],
-Seq
- [Var "x";
-  LambdaSimple (["x"],
-   Seq
-    [Set (Var "x", Const (Sexpr (Number (Fraction (1, 1)))));
-     LambdaSimple ([], Var "x")]);
-  LambdaSimple ([], Set (Var "x", Var "x"))])

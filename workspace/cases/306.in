@@ -1,7 +1,0 @@
-LambdaSimple (["x"; "y"; "z"],
-  Seq
-   [LambdaSimple (["y"],
-     Seq
-      [Set (Var "x", Const (Sexpr (Number (Int 5))));
-       Applic (Var "+", [Var "x"; Var "y"])]);
-    Applic (Var "+", [Var "x"; Var "y"; Var "z"])])

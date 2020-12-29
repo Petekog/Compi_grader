@@ -1,2 +1,0 @@
-LambdaSimple ([],
-  If (Var "x", Applic (Var "x", []), Applic (Var "not", [Var "x"])))

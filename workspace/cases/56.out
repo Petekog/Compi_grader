@@ -1,8 +1,0 @@
-
-Def' (Var' (VarFree "func"),
- LambdaOpt' ([], "x",
-  LambdaSimple' (["samerib"],
-   ApplicTP' (Var' (VarFree "list"),
-    [LambdaSimple' ([], Var' (VarBound ("x", 1, 0)));
-     LambdaSimple' (["z"],
-      Set' (Var' (VarBound ("x", 1, 0)), Var' (VarParam ("z", 0))))]))))

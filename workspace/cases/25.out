@@ -1,6 +1,0 @@
-
-LambdaSimple' (["x"],
- ApplicTP' (Var' (VarFree "f"),
-  [LambdaSimple' (["y"],
-    ApplicTP' (Var' (VarFree "g"),
-     [Var' (VarBound ("x", 0, 0)); Var' (VarParam ("y", 0))]))]))

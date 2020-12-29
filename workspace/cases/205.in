@@ -1,8 +1,0 @@
-LambdaSimple (["x"; "y"],
- Seq
-  [Applic (Var "x", [Var "y"]);
-   LambdaSimple ([],
-    LambdaSimple ([],
-     LambdaSimple ([],
-      Set (Var "x",
-       Applic (LambdaSimple (["z"], Set (Var "y", Var "x")), [Var "y"])))))])

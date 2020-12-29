@@ -1,4 +1,0 @@
-
-LambdaSimple' (["a"; "b"],
- Seq'
-  [ApplicTP' (Var' (VarFree "display"), [Const' (Sexpr (String "done!\n"))])])

@@ -1,7 +1,0 @@
-
-LambdaSimple' ([],
- If' (Applic' (Var' (VarFree "f"), [Var' (VarFree "x")]),
-  If' (Applic' (Var' (VarFree "g"), [Var' (VarFree "y")]),
-   ApplicTP' (Var' (VarFree "h"), [Var' (VarFree "z")]),
-   Const' (Sexpr (Bool false))),
-  Const' (Sexpr (Bool false))))

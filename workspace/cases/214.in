@@ -1,5 +1,0 @@
-LambdaSimple (["a"; "b"; "c"; "d"; "e"],
-Applic (Var "a",
- [Applic (Var "b", [Var "c"]); Applic (Var "c", [Var "b"; Var "d"]);
-  Applic (Var "a",
-   [Applic (Var "b", [Applic (Var "c", [Applic (Var "d", [Var "e"])])])])]))

@@ -1,4 +1,0 @@
-LambdaSimple (["a"; "b"],
- Seq
-  [Applic (Var "f", [Var "a"]); Applic (Var "g", [Var "a"; Var "b"]);
-   Applic (Var "display", [Const (Sexpr (String "done!\n"))])])

@@ -1,4 +1,0 @@
-LambdaSimple ([],
- Set (Var "x",
-  Applic (Var "f",
-   [LambdaSimple (["y"], Applic (Var "g", [Var "x"; Var "y"]))])))

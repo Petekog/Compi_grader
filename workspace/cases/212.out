@@ -1,1 +1,0 @@
-If' (Var' (VarFree "x"), Applic' (Var' (VarFree "x"), []), Var' (VarFree "x"))

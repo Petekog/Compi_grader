@@ -1,7 +1,0 @@
-
-LambdaSimple' (["a"; "b"],
- Seq'
-  [Applic' (Var' (VarFree "f"), [Var' (VarParam ("a", 0))]);
-   Applic' (Var' (VarFree "g"),
-    [Var' (VarParam ("a", 0)); Var' (VarParam ("b", 1))]);
-   ApplicTP' (Var' (VarFree "display"), [Const' (Sexpr (String "done!\n"))])])

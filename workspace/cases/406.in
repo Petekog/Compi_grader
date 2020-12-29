@@ -1,6 +1,0 @@
-LambdaOpt (["x"; "y"; "z"], "w",
-  Seq
-   [Applic
-     (LambdaSimple ([],
-       Seq [Set (Var "w", Var "w"); Applic (Applic (Var "y", [Var "x"]), [])]),
-     [])])

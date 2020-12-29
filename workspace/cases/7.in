@@ -1,8 +1,0 @@
-Def (Var "a",
-  Applic
-   (LambdaSimple ([],
-     LambdaOpt ([], "x",
-      Seq
-       [Var "x";
-        LambdaOpt ([], "y", Set (Var "y", Const (Sexpr (Number (Fraction (1, 1))))))])),
-   []))

@@ -1,7 +1,0 @@
-#use "semantic-analyser.ml";;
-   
-let input = Semantics.run_semantics  (LambdaSimple ([], Const (Sexpr (Number (Fraction (1, 1)))));;
-
-let output = LambdaSimple' ([], Const' (Sexpr (Number (Fraction (1, 1)))));;                       
-Printf.printf "%b" (List.for_all2 expr'_eq  [input] [output]);;
-

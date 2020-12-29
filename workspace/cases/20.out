@@ -1,9 +1,0 @@
-
-LambdaSimple' (["x"],
- ApplicTP'
-  (LambdaSimple' (["y"],
-    Seq'
-     [Set' (Var' (VarBound ("x", 0, 0)),
-       Applic' (Var' (VarParam ("y", 0)), []));
-      Const' (Sexpr (Number (Fraction (2, 1))))]),
-  []))
